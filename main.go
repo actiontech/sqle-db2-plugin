@@ -26,7 +26,7 @@ func (d *DB2Dialector) String() string {
 }
 
 func (d *DB2Dialector) ShowDatabaseSQL() string {
-	return "SELECT current date FROM sysibm.sysdummy1"
+	return fmt.Sprintf("select '%v' as name from SYSIBM.SYSDUMMY1", database_name)
 }
 
 var version string
