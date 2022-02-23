@@ -32,7 +32,7 @@ export CGO_LDFLAGS=-L$DB2HOME/lib
 export LD_LIBRARY_PATH=$DB2HOME/lib
 ```
 
-Sixth, execute ```make install``` in the sqle-db2-plugin directory, the sqle-db2-plugin file will be generated in the
+Sixth, execute ```make DATABASE_NAME=${the name of the database you want to connect to with the plugin} install``` in the sqle-db2-plugin directory, the sqle-db2-plugin file will be generated in the
 bin directory of the sqle-db2-plugin directory, this file is the plug-in
 
 Seventh, perform the first four steps on the machine deployed by SQLe and configure the `LD_LIBRARY_PATH` environment
@@ -43,7 +43,7 @@ variable in the fifth step
 First, execute the following command to generate the plugin
 
 ```bash
-make docker_install
+make DATABASE_NAME=${the name of the database you want to connect to with the plugin} docker_install
 ```
 
 Secondly, Configure your plugin environment as described in step 7 of manual compilation
@@ -56,3 +56,5 @@ Secondly, Configure your plugin environment as described in step 7 of manual com
 
 More details please refer
 to [docs](https://actiontech.github.io/sqle-docs-cn/3.modules/3.7_auditplugin/auditplugin_management.html).
+
+
