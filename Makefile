@@ -16,18 +16,20 @@ install:
 	go build -mod=vendor ${LDFLAGS} -o $(GOBIN)/$(PROJECT_NAME) ./
 
 # This item is temporarily unavailable
-#docker_install:
-#	$(DOCKER) run -v $(shell pwd):/universe --rm $(GO_COMPILER_IMAGE) sh -c "go env -w GO111MODULE=on \
-#	&& go env -w GOPROXY=https://goproxy.cn,direct \
-#	&& go get -d github.com/ibmdb/go_ibm_db \
-#	&& cd /go/pkg/mod/github.com/ibmdb/go_ibm_db@v0.4.1/installer \
-#	&& go run setup.go \
-#	&& export DB2HOME=/go/pkg/mod/github.com/ibmdb/clidriver \
-#	&& export CGO_CFLAGS=-I/go/pkg/mod/github.com/ibmdb/clidriver/include \
-#	&& export CGO_LDFLAGS=-L/go/pkg/mod/github.com/ibmdb/clidriver/lib \
-#	&& export LD_LIBRARY_PATH=/go/pkg/mod/github.com/ibmdb/clidriver/lib \
-#	&& cd /universe \
-#	&& make install $(MAKEFLAGS)"
+docker_install:
+	$(DOCKER) run -v $(shell pwd):/universe --rm $(GO_COMPILER_IMAGE) sh -c "go env -w GO111MODULE=on \
+	&& go env -w GOPROXY=https://goproxy.cn,direct \
+	&& go get -d github.com/ibmdb/go_ibm_db \
+	&& cd /go/pkg/mod/github.com/ibmdb/go_ibm_db@v0.4.1/installer \
+	&& go run setup.go \
+	&& export DB2HOME=/go/pkg/mod/github.com/ibmdb/clidriver \
+	&& export CGO_CFLAGS=-I/go/pkg/mod/github.com/ibmdb/clidriver/include \
+	&& export CGO_LDFLAGS=-L/go/pkg/mod/github.com/ibmdb/clidriver/lib \
+	&& export LD_LIBRARY_PATH=/go/pkg/mod/github.com/ibmdb/clidriver/lib \
+	&& apt update \
+	&& apt install -y libxml2\
+	&& cd /universe \
+	&& make install $(MAKEFLAGS)"
 
 upload:
 	curl -T $(GOBIN)/$(PROJECT_NAME) ftp://$(RELEASE_FTPD_HOST)/actiontech-sqle/plugins/$(PROJECT_VERSION)/$(PROJECT_NAME) --ftp-create-dirs
