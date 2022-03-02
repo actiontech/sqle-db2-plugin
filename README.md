@@ -9,6 +9,9 @@ refer to [docs](https://actiontech.github.io/sqle-docs-cn/3.modules/3.7_auditplu
 
 ### 2. Build Binary
 
+#### Document
+[中文文档](https://github.com/actiontech/sqle/discussions/360)
+
 #### Compile manually
 
 First, you need to install go git tar libpam on your machine. You can execute ```yum install go git tar libpam```
