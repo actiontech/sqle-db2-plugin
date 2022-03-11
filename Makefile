@@ -22,10 +22,10 @@ docker_install:
 	&& go get -d github.com/ibmdb/go_ibm_db \
 	&& cd /go/pkg/mod/github.com/ibmdb/go_ibm_db@v0.4.1/installer \
 	&& go run setup.go \
-	&& export DB2HOME=/go/pkg/mod/github.com/ibmdb/clidriver \
-	&& export CGO_CFLAGS=-I/go/pkg/mod/github.com/ibmdb/clidriver/include \
-	&& export CGO_LDFLAGS=-L/go/pkg/mod/github.com/ibmdb/clidriver/lib \
-	&& export LD_LIBRARY_PATH=/go/pkg/mod/github.com/ibmdb/clidriver/lib \
+	&& export DB2HOME=/root/go/pkg/mod/github.com/ibmdb/clidriver \
+	&& export CGO_CFLAGS=-I/root/go/pkg/mod/github.com/ibmdb/clidriver/include \
+	&& export CGO_LDFLAGS=-L/root/go/pkg/mod/github.com/ibmdb/clidriver/lib \
+	&& export LD_LIBRARY_PATH=/root/go/pkg/mod/github.com/ibmdb/clidriver/lib \
 	&& apt update \
 	&& apt install -y libxml2\
 	&& cd /universe \

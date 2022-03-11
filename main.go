@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/actiontech/sqle/sqle/pkg/params"
 	"strings"
 
 	"github.com/actiontech/sqle/sqle/driver"
@@ -16,13 +17,21 @@ var database_name string
 type DB2Dialector struct{}
 
 func (d *DB2Dialector) Dialect(dsn *driver.DSN) (string, string) {
+	user, database := dsn.AdditionalParams.GetParam("test_name"), dsn.AdditionalParams.GetParam("database")
+	us, da := "", ""
+	if user != nil {
+		us = user.Value
+	}
+	if database != nil {
+		da = database.Value
+	}
 
-	con := fmt.Sprintf("HOSTNAME=%v;DATABASE=%v;PORT=%v;UID=%v;PWD=%v", dsn.Host, database_name, dsn.Port, dsn.User, dsn.Password)
+	con := fmt.Sprintf("HOSTNAME=%v;DATABASE=%v;PORT=%v;UID=%v;PWD=%v", dsn.Host, da, dsn.Port, us, dsn.Password)
 	return "go_ibm_db", con
 }
 
 func (d *DB2Dialector) String() string {
-	return "DB2"
+	return "DB2-New"
 }
 
 func (d *DB2Dialector) ShowDatabaseSQL() string {
@@ -57,5 +66,20 @@ func main() {
 		return "", nil
 	}
 	plugin.AddRule(ruleDQL1, ruleDQL1Handler)
+
+	plugin.AddAdditionalParams(&params.Param{
+		Key:   "test_name",
+		Value: "",
+		Desc:  "用户名(测试凑数用)",
+		Type:  "string",
+	})
+
+	plugin.AddAdditionalParams(&params.Param{
+		Key:   "database",
+		Value: "",
+		Desc:  "数据库名",
+		Type:  "string",
+	})
+
 	plugin.Serve()
 }
