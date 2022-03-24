@@ -2,7 +2,7 @@ override DOCKER         		= $(shell which docker)
 override GIT_VERSION    		= $(shell git rev-parse --abbrev-ref HEAD)${CUSTOM} $(shell git rev-parse HEAD)
 override PROJECT_NAME 			= sqle-db2-plugin
 override DATABASE_NAME			?=DB2
-override LDFLAGS 				= -ldflags "-X 'main.version=\"${GIT_VERSION}\"' -X 'main.database_name=${DATABASE_NAME}'"
+override LDFLAGS 				= -ldflags "-X 'main.version=\"${GIT_VERSION}\"'"
 override GOBIN					= ${shell pwd}/bin
 
 GO_COMPILER_IMAGE ?= golang:1.16

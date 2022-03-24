@@ -3,7 +3,7 @@ module github.com/actiontech/sqle-db2-plugin
 go 1.17
 
 require (
-	github.com/actiontech/sqle v1.2201.0
+	github.com/actiontech/sqle v1.2203.0-pre3.0.20220323045307-6c7bcf498bd4
 	github.com/ibmdb/go_ibm_db v0.4.1
 )
 

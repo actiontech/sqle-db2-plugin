@@ -5,6 +5,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 
@@ -21,6 +22,10 @@ var (
 	// rules store audit rules for each driver.
 	rules   map[string][]*Rule
 	rulesMu sync.RWMutex
+
+	// additionalParams store driver additional params
+	additionalParams   map[string]params.Params
+	additionalParamsMu sync.RWMutex
 )
 
 const (
@@ -35,10 +40,11 @@ const (
 
 // DSN provide necessary information to connect to database.
 type DSN struct {
-	Host     string
-	Port     string
-	User     string
-	Password string
+	Host             string
+	Port             string
+	User             string
+	Password         string
+	AdditionalParams params.Params
 
 	// DatabaseName is the default database to connect.
 	DatabaseName string
@@ -47,6 +53,7 @@ type DSN struct {
 type RuleLevel string
 
 const (
+	RuleLevelNull   RuleLevel = "" // used to indicate no rank
 	RuleLevelNormal RuleLevel = "normal"
 	RuleLevelNotice RuleLevel = "notice"
 	RuleLevelWarn   RuleLevel = "warn"
@@ -54,6 +61,7 @@ const (
 )
 
 var ruleLevelMap = map[RuleLevel]int{
+	RuleLevelNull:   -1,
 	RuleLevelNormal: 0,
 	RuleLevelNotice: 1,
 	RuleLevelWarn:   2,
@@ -66,6 +74,10 @@ func (r RuleLevel) LessOrEqual(l RuleLevel) bool {
 
 func (r RuleLevel) More(l RuleLevel) bool {
 	return ruleLevelMap[r] > ruleLevelMap[l]
+}
+
+func (r RuleLevel) MoreOrEqual(l RuleLevel) bool {
+	return ruleLevelMap[r] >= ruleLevelMap[l]
 }
 
 type Rule struct {
@@ -141,7 +153,7 @@ type handler func(log *logrus.Entry, c *Config) (Driver, error)
 //
 // Register makes a database driver available by the provided driver name.
 // Driver's initialize handler and audit rules register by Register.
-func Register(name string, h handler, rs []*Rule) {
+func Register(name string, h handler, rs []*Rule, ap params.Params) {
 	_, exist := drivers[name]
 	if exist {
 		panic("duplicated driver name")
@@ -157,6 +169,13 @@ func Register(name string, h handler, rs []*Rule) {
 	}
 	rules[name] = rs
 	rulesMu.Unlock()
+
+	additionalParamsMu.Lock()
+	if additionalParams == nil {
+		additionalParams = make(map[string]params.Params)
+	}
+	additionalParams[name] = ap
+	additionalParamsMu.Unlock()
 }
 
 type DriverNotSupportedError struct {
@@ -195,6 +214,17 @@ func AllDrivers() []string {
 		driverNames = append(driverNames, n)
 	}
 	return driverNames
+}
+
+func AllAdditionalParams() map[string] /*driver name*/ params.Params {
+	additionalParamsMu.RLock()
+	defer additionalParamsMu.RUnlock()
+
+	newParams := map[string]params.Params{}
+	for k, v := range additionalParams {
+		newParams[k] = v.Copy()
+	}
+	return newParams
 }
 
 var ErrNodesCountExceedOne = errors.New("after parse, nodes count exceed one")
@@ -244,6 +274,9 @@ type Registerer interface {
 
 	// Rules returns all rules that plugin supported.
 	Rules() []*Rule
+
+	// AdditionalParams returns all additional params that plugin supported.
+	AdditionalParams() params.Params
 }
 
 // Node is a interface which unify SQL ast tree. It produce by Driver.Parse.
@@ -286,7 +319,7 @@ func NewInspectResults() *AuditResult {
 
 // Level find highest Level in result
 func (rs *AuditResult) Level() RuleLevel {
-	level := RuleLevelNormal
+	level := RuleLevelNull
 	for _, curr := range rs.results {
 		if ruleLevelMap[curr.level] > ruleLevelMap[level] {
 			level = curr.level
@@ -320,6 +353,13 @@ func (rs *AuditResult) Add(level RuleLevel, message string, args ...interface{})
 	rs.results = append(rs.results, &auditResult{
 		level:   level,
 		message: fmt.Sprintf(message, args...),
+	})
+	rs.SortByLevel()
+}
+
+func (rs *AuditResult) SortByLevel() {
+	sort.Slice(rs.results, func(i, j int) bool {
+		return rs.results[i].level.More(rs.results[j].level)
 	})
 }
 
