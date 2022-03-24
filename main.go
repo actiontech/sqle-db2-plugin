@@ -4,11 +4,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/actiontech/sqle/sqle/pkg/params"
 	"strings"
 
 	"github.com/actiontech/sqle/sqle/driver"
 	adaptor "github.com/actiontech/sqle/sqle/pkg/driver"
+	"github.com/actiontech/sqle/sqle/pkg/params"
+
 	_ "github.com/ibmdb/go_ibm_db"
 )
 
