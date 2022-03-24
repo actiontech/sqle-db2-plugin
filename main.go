@@ -8,6 +8,8 @@ import (
 
 	"github.com/actiontech/sqle/sqle/driver"
 	adaptor "github.com/actiontech/sqle/sqle/pkg/driver"
+	"github.com/actiontech/sqle/sqle/pkg/params"
+
 	_ "github.com/ibmdb/go_ibm_db"
 )
 
@@ -16,7 +18,8 @@ var database_name string
 type DB2Dialector struct{}
 
 func (d *DB2Dialector) Dialect(dsn *driver.DSN) (string, string) {
-
+	p := dsn.AdditionalParams
+	database_name = p.GetParam("database_name").String()
 	con := fmt.Sprintf("HOSTNAME=%v;DATABASE=%v;PORT=%v;UID=%v;PWD=%v", dsn.Host, database_name, dsn.Port, dsn.User, dsn.Password)
 	return "go_ibm_db", con
 }
@@ -57,5 +60,11 @@ func main() {
 		return "", nil
 	}
 	plugin.AddRule(ruleDQL1, ruleDQL1Handler)
+	plugin.AddAdditionalParams(&params.Param{
+		Key:   "database_name",
+		Value: "",
+		Desc:  "数据库名",
+		Type:  "string",
+	})
 	plugin.Serve()
 }
