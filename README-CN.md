@@ -17,17 +17,22 @@
 
 ### 3. 准备插件运行环境
 
-1. 下载驱动 : https://public.dhe.ibm.com/ibmdl/export/pub/software/data/db2/drivers/odbc_cli/linuxx64_odbc_cli.tar.gz
-2. 将驱动拷贝到SQLE部署的机器并解压, 解压后的目录如下
-   ![](./doc-image/2.png)
-3. 执行命令为sqled添加环境变量, **${YOUR_DRIVER_LIB_PATH}需要替换成解压后的驱动目录下的lib目录**
-
-   ```systemctl set-environment "LD_LIBRARY_PATH=${YOUR_DRIVER_LIB_PATH}"```
-   ![](./doc-image/3.png)
-
-4. 重新启动sqled ```systemctl restart sqled```
-   ![img.png](doc-image/4.png)
-   通过日志可以看到, db2插件开始工作
+1. 在SQLE部署的机器下载驱动
+   ```bash
+   curl -L https://public.dhe.ibm.com/ibmdl/export/pub/software/data/db2/drivers/odbc_cli/linuxx64_odbc_cli.tar.gz -o /opt/sqle/linuxx64_odbc_cli.tar.gz
+   ```
+2. 解压驱动
+   ```bash
+   tar zxvf /opt/sqle/linuxx64_odbc_cli.tar.gz -C /opt/sqle/
+   ```
+3. 为sqled添加环境变量
+   ``` bash
+   systemctl set-environment "LD_LIBRARY_PATH=/opt/sqle/clidriver/lib"
+   ```
+4. 重新启动sqled
+   ``` bash
+   systemctl restart sqled
+   ```
 
 ### 4.开始使用
 
