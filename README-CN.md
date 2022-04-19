@@ -20,15 +20,14 @@
 1. 下载驱动 : https://public.dhe.ibm.com/ibmdl/export/pub/software/data/db2/drivers/odbc_cli/linuxx64_odbc_cli.tar.gz
 2. 将驱动拷贝到SQLE部署的机器并解压, 解压后的目录如下
    ![](./doc-image/2.png)
-3. 将sqle-db2-plugin插件拷贝到SQLE的插件目录下
+3. 执行命令为sqled添加环境变量, **${YOUR_DRIVER_LIB_PATH}需要替换成解压后的驱动目录下的lib目录**
+
+   ```systemctl set-environment "LD_LIBRARY_PATH=${YOUR_DRIVER_LIB_PATH}"```
    ![](./doc-image/3.png)
-4. 使用ldd检查sqle-db2-plugin的依赖, 应当如下图所示
-   ![](./doc-image/4.png)
-5. 将第二步驱动目录中的 lib文件夹内的所有内容拷贝到 ldd显示的sqle-db2-plugin 引用的动态链接库 所在目录, 演示环境中动态库在/lib64中, 则拷贝到/lib64中,
-   **这一项的目标位置需要根据实际情况进行调整**
-   ![](./doc-image/5.png)
-6. 再次使用ldd检查sqle-db2-plugin运行环境是否配置正确, 确保没有找不到的依赖
-   ![](./doc-image/6.png)
+
+4. 重新启动sqled ```systemctl restart sqled```
+   ![img.png](doc-image/4.png)
+   通过日志可以看到, db2插件开始工作
 
 ### 4.开始使用
 
