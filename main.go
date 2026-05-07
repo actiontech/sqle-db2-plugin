@@ -2,34 +2,64 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"flag"
 	"fmt"
 	"strings"
 
-	"github.com/actiontech/sqle/sqle/driver"
-	adaptor "github.com/actiontech/sqle/sqle/pkg/driver"
+	"github.com/actiontech/dms/pkg/dms-common/i18nPkg"
+	driverV2 "github.com/actiontech/sqle/sqle/driver/v2"
+	driver "github.com/actiontech/sqle/sqle/pkg/driver"
 	"github.com/actiontech/sqle/sqle/pkg/params"
+	"github.com/nicksnyder/go-i18n/v2/i18n"
 
-	_ "github.com/ibmdb/go_ibm_db"
+	"github.com/actiontech/sqle-db2-plugin/plocale"
 )
 
-var database_name string
-
-type DB2Dialector struct{}
-
-func (d *DB2Dialector) Dialect(dsn *driver.DSN) (string, string) {
-	p := dsn.AdditionalParams
-	database_name = p.GetParam("database_name").String()
-	con := fmt.Sprintf("HOSTNAME=%v;DATABASE=%v;PORT=%v;UID=%v;PWD=%v", dsn.Host, database_name, dsn.Port, dsn.User, dsn.Password)
-	return "go_ibm_db", con
+// DB2Dialector implements the driver.Dialector interface for IBM DB2.
+type DB2Dialector struct {
+	driver.BaseDialector
+	databaseName string
 }
 
 func (d *DB2Dialector) String() string {
 	return "DB2"
 }
 
+func (d *DB2Dialector) DatabaseAdditionalParam() params.Params {
+	return params.Params{
+		&params.Param{
+			Key:   "database_name",
+			Value: "",
+			Desc:  "数据库名",
+			Type:  params.ParamTypeString,
+		},
+	}
+}
+
+func (d *DB2Dialector) Open(dsn *driverV2.DSN) (*sql.DB, *sql.Conn, error) {
+	dbName := dsn.AdditionalParams.GetParam("database_name").String()
+	d.databaseName = dbName
+	con := fmt.Sprintf("HOSTNAME=%v;DATABASE=%v;PORT=%v;UID=%v;PWD=%v",
+		dsn.Host, dbName, dsn.Port, dsn.User, dsn.Password)
+	return d.GetConn("go_ibm_db", con)
+}
+
 func (d *DB2Dialector) ShowDatabaseSQL() string {
-	return fmt.Sprintf("select '%v' as name from SYSIBM.SYSDUMMY1", database_name)
+	return fmt.Sprintf("select '%v' as name from SYSIBM.SYSDUMMY1", d.databaseName)
+}
+
+// genI18nRuleInfo generates I18nRuleInfo for all supported languages from the Bundle.
+func genI18nRuleInfo(bundle *i18nPkg.Bundle, desc, annotation, category *i18n.Message) driverV2.I18nRuleInfo {
+	result := make(driverV2.I18nRuleInfo, len(bundle.LanguageTags()))
+	for _, langTag := range bundle.LanguageTags() {
+		result[langTag] = &driverV2.RuleInfo{
+			Desc:       bundle.LocalizeMsgByLang(langTag, desc),
+			Annotation: bundle.LocalizeMsgByLang(langTag, annotation),
+			Category:   bundle.LocalizeMsgByLang(langTag, category),
+		}
+	}
+	return result
 }
 
 var version string
@@ -43,28 +73,29 @@ func main() {
 		return
 	}
 
-	plugin := adaptor.NewAdaptor(&DB2Dialector{})
+	b := driver.NewDriverBuilder(&DB2Dialector{})
 
-	ruleDQL1 := &driver.Rule{
-		Name:     "db2_dql_1",
-		Desc:     "禁止不带where条件的查询",
-		Category: "SQL规范",
-		Level:    driver.RuleLevelError,
+	// Define rule with i18n support
+	ruleDQL1 := &driverV2.Rule{
+		Name:         "db2_dql_1",
+		Level:        driverV2.RuleLevelError,
+		I18nRuleInfo: genI18nRuleInfo(plocale.Bundle, plocale.DB2DQL1Desc, nil, plocale.DB2RuleCategorySQLConvention),
 	}
-	ruleDQL1Handler := func(ctx context.Context, rule *driver.Rule, sql string) (string, error) {
-		lowerSql := strings.ToLower(sql)
-		if strings.Contains(lowerSql, "select") &&
-			!strings.Contains(lowerSql, "where") {
-			return rule.Desc, nil
+
+	// Define audit handler returning I18nStr
+	ruleDQL1Handler := func(ctx context.Context, rule *driverV2.Rule, rawSQL string, nextSQL []string) (i18nPkg.I18nStr, error) {
+		lowerSQL := strings.ToLower(rawSQL)
+		if strings.Contains(lowerSQL, "select") &&
+			!strings.Contains(lowerSQL, "where") {
+			return plocale.Bundle.LocalizeAll(plocale.DB2DQL1Message), nil
 		}
-		return "", nil
+		return nil, nil
 	}
-	plugin.AddRule(ruleDQL1, ruleDQL1Handler)
-	plugin.AddAdditionalParams(&params.Param{
-		Key:   "database_name",
-		Value: "",
-		Desc:  "数据库名",
-		Type:  "string",
-	})
-	plugin.Serve()
+
+	b.AddRule(ruleDQL1, ruleDQL1Handler)
+	b.SetEnableOptionalModule(
+		driverV2.OptionalModuleQuery,
+		driverV2.OptionalModuleI18n,
+	)
+	b.Serve(driver.NewDriverImpl)
 }
