@@ -1,0 +1,3 @@
+DB2DQL1Desc = "禁止不带where条件的查询"
+DB2DQL1Message = "禁止不带where条件的查询"
+DB2RuleCategorySQLConvention = "SQL规范"

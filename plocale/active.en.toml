@@ -1,0 +1,3 @@
+DB2DQL1Desc = "Prohibit queries without WHERE clause"
+DB2DQL1Message = "Prohibit queries without WHERE clause"
+DB2RuleCategorySQLConvention = "SQL convention"
