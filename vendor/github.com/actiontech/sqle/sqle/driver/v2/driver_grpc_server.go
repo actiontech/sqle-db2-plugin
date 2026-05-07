@@ -1,0 +1,700 @@
+package driverV2
+
+import (
+	"context"
+	"database/sql/driver"
+	"encoding/json"
+	"fmt"
+	"sync"
+
+	"github.com/actiontech/dms/pkg/dms-common/i18nPkg"
+	protoV2 "github.com/actiontech/sqle/sqle/driver/v2/proto"
+	"github.com/actiontech/sqle/sqle/pkg/params"
+	"golang.org/x/text/language"
+
+	"github.com/pkg/errors"
+	"google.golang.org/grpc/status"
+)
+
+var (
+	ErrNodesCountExceedOne = errors.New("after parse, nodes count exceed one")
+	ErrSQLIsNotSupported   = errors.New("SQL is not supported")
+	ErrSQLisEmpty          = errors.New("SQL is empty")
+)
+
+type DSN struct {
+	Host             string
+	Port             string
+	User             string
+	Password         string
+	AdditionalParams params.Params
+
+	// DatabaseName is the default database to connect.
+	DatabaseName string
+}
+
+type Rule struct {
+	Name         string
+	Level        RuleLevel
+	CategoryTags map[string][]string
+	Params       params.Params
+	I18nRuleInfo I18nRuleInfo
+	AllowOffline bool
+	Version      uint32
+}
+
+type I18nRuleInfo map[language.Tag]*RuleInfo
+
+// GetRuleInfoByLangTag if the lang not exists, return DefaultLang
+func (i *I18nRuleInfo) GetRuleInfoByLangTag(lang language.Tag) *RuleInfo {
+	if ruleInfo, ok := (*i)[lang]; ok {
+		return ruleInfo
+	}
+	return (*i)[i18nPkg.DefaultLang]
+}
+
+func (i I18nRuleInfo) Value() (driver.Value, error) {
+	b, err := json.Marshal(i)
+	return string(b), err
+}
+
+func (i *I18nRuleInfo) Scan(input interface{}) error {
+	if input == nil {
+		return nil
+	}
+	if data, ok := input.([]byte); !ok {
+		return fmt.Errorf("I18nRuleInfo Scan input is not bytes")
+	} else {
+		return json.Unmarshal(data, i)
+	}
+}
+
+type RuleInfo struct {
+	Desc       string
+	Annotation string
+
+	// Category is the category of the rule. Such as "Naming Conventions"...
+	// Rules will be displayed on the SQLE rule list page by category.
+	Category  string
+	Knowledge RuleKnowledge
+}
+
+type Config struct {
+	DSN   *DSN
+	Rules []*Rule
+}
+
+func NewConfig(dsn *DSN, rules []*Rule) (*Config, error) {
+	return &Config{
+		DSN:   dsn,
+		Rules: rules,
+	}, nil
+}
+
+type DriverGrpcServer struct {
+	Meta          DriverMetas
+	DriverFactory func(*Config) (Driver, error)
+	Drivers       map[string] /* session id*/ Driver
+	sync.Mutex
+}
+
+func (d *DriverGrpcServer) getDriverBySession(session *protoV2.Session) (Driver, error) {
+	d.Lock()
+	defer d.Unlock()
+	driver, ok := d.Drivers[session.Id]
+	if !ok {
+		return nil, fmt.Errorf("session %s not found", session.Id)
+	}
+	return driver, nil
+
+}
+
+func (d *DriverGrpcServer) Backup(ctx context.Context, req *protoV2.BackupReq) (*protoV2.BackupRes, error) {
+	driver, err := d.getDriverBySession(req.Session)
+	if err != nil {
+		return &protoV2.BackupRes{}, err
+	}
+	res, err := driver.Backup(ctx, &BackupReq{
+		BackupStrategy: req.BackupStrategy.String(),
+		Sql:            req.Sql,
+		BackupMaxRows:  req.BackupMaxRows,
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "backup")
+	}
+	return &protoV2.BackupRes{
+		BackupSql:     res.BackupSql,
+		ExecuteResult: res.ExecuteResult,
+	}, nil
+}
+
+func (d *DriverGrpcServer) RecommendBackupStrategy(ctx context.Context, req *protoV2.RecommendBackupStrategyReq) (*protoV2.RecommendBackupStrategyRes, error) {
+	driver, err := d.getDriverBySession(req.Session)
+	if err != nil {
+		return &protoV2.RecommendBackupStrategyRes{}, err
+	}
+	res, err := driver.RecommendBackupStrategy(ctx, &RecommendBackupStrategyReq{
+		Sql: req.Sql,
+	})
+	if err != nil {
+		return &protoV2.RecommendBackupStrategyRes{}, errors.Wrap(err, "backup")
+	}
+	var backupStrategyProtoV2 protoV2.BackupStrategy
+	switch res.BackupStrategy {
+	case BackupStrategyReverseSql:
+		backupStrategyProtoV2 = protoV2.BackupStrategy_ReverseSql
+	case BackupStrategyManually:
+		backupStrategyProtoV2 = protoV2.BackupStrategy_Manually
+	case BackupStrategyNone:
+		backupStrategyProtoV2 = protoV2.BackupStrategy_None
+	case BackupStrategyOriginalRow:
+		backupStrategyProtoV2 = protoV2.BackupStrategy_OriginalRow
+	default:
+		return nil, fmt.Errorf("unsupported strategy %v", res.BackupStrategy)
+	}
+	return &protoV2.RecommendBackupStrategyRes{
+		BackupStrategy:    backupStrategyProtoV2,
+		BackupStrategyTip: res.BackupStrategyTip,
+		TablesRefer:       res.TablesRefer,
+		SchemasRefer:      res.SchemasRefer,
+	}, nil
+}
+
+func (d *DriverGrpcServer) Metas(ctx context.Context, req *protoV2.Empty) (*protoV2.MetasResponse, error) {
+	rules := make([]*protoV2.Rule, 0, len(d.Meta.Rules))
+	for _, r := range d.Meta.Rules {
+		rules = append(rules, ConvertRuleFromDriverToProto(r))
+	}
+
+	ms := make([]protoV2.OptionalModule, 0, len(d.Meta.EnabledOptionalModule))
+	for _, m := range d.Meta.EnabledOptionalModule {
+		ms = append(ms, protoV2.OptionalModule(m))
+	}
+
+	return &protoV2.MetasResponse{
+		PluginName:               d.Meta.PluginName,
+		DatabaseDefaultPort:      d.Meta.DatabaseDefaultPort,
+		Logo:                     d.Meta.Logo,
+		DatabaseAdditionalParams: ConvertParamToProtoParam(d.Meta.DatabaseAdditionalParams),
+		Rules:                    ConvertI18nRulesFromDriverToProto(d.Meta.Rules),
+		EnabledOptionalModule:    ms,
+	}, nil
+}
+
+func (d *DriverGrpcServer) Init(ctx context.Context, req *protoV2.InitRequest) (*protoV2.InitResponse, error) {
+	var rules = make([]*Rule, 0, len(req.GetRules()))
+	for _, rule := range req.GetRules() {
+		dr, err := ConvertI18nRuleFromProtoToDriver(rule, d.Meta.PluginName, d.Meta.IsOptionalModuleEnabled(OptionalModuleI18n))
+		if err != nil {
+			return nil, err
+		}
+		rules = append(rules, dr)
+	}
+
+	var dsn *DSN
+	if req.GetDsn() != nil {
+		ps, err := ConvertProtoParamToParam(req.GetDsn().GetAdditionalParams())
+		if err != nil {
+			return nil, fmt.Errorf("DriverGrpcServer Init req rule param err: %w", err)
+		}
+		dsn = &DSN{
+			Host:             req.GetDsn().GetHost(),
+			Port:             req.GetDsn().GetPort(),
+			User:             req.GetDsn().GetUser(),
+			Password:         req.GetDsn().GetPassword(),
+			DatabaseName:     req.GetDsn().GetDatabase(),
+			AdditionalParams: ps,
+		}
+	}
+	id := RandStr(20)
+	driver, err := d.DriverFactory(&Config{
+		DSN:   dsn,
+		Rules: rules,
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "init config")
+	}
+	d.Lock()
+	if _, ok := d.Drivers[id]; ok {
+		d.Unlock()
+		driver.Close(ctx)
+		return nil, errors.New("session id is duplicated") // 几乎不会发生.
+	}
+	d.Drivers[id] = driver
+	d.Unlock()
+
+	return &protoV2.InitResponse{
+		Session: &protoV2.Session{
+			Id: id,
+		},
+	}, nil
+}
+
+func (d *DriverGrpcServer) Close(ctx context.Context, req *protoV2.CloseRequest) (*protoV2.Empty, error) {
+	driver, err := d.getDriverBySession(req.Session)
+	if err != nil {
+		return &protoV2.Empty{}, err
+	}
+	d.Mutex.Lock()
+	delete(d.Drivers, req.Session.Id)
+	d.Mutex.Unlock()
+
+	driver.Close(ctx)
+	return &protoV2.Empty{}, nil
+}
+
+func (d *DriverGrpcServer) Parse(ctx context.Context, req *protoV2.ParseRequest) (*protoV2.ParseResponse, error) {
+	driver, err := d.getDriverBySession(req.Session)
+	if err != nil {
+		return &protoV2.ParseResponse{}, err
+	}
+	if req.Sql == nil {
+		return &protoV2.ParseResponse{}, ErrSQLisEmpty
+	}
+	nodes, err := driver.Parse(ctx, req.Sql.Query)
+	if err != nil {
+		return &protoV2.ParseResponse{}, err
+	}
+
+	resp := &protoV2.ParseResponse{}
+	for _, node := range nodes {
+		resp.Nodes = append(resp.Nodes, &protoV2.Node{
+			Text:        node.Text,
+			Type:        node.Type,
+			Fingerprint: node.Fingerprint,
+		})
+	}
+	return resp, nil
+}
+
+func (d *DriverGrpcServer) Audit(ctx context.Context, req *protoV2.AuditRequest) (*protoV2.AuditResponse, error) {
+	driver, err := d.getDriverBySession(req.Session)
+	if err != nil {
+		return &protoV2.AuditResponse{}, err
+	}
+	if len(req.Sqls) == 0 {
+		return &protoV2.AuditResponse{}, ErrSQLisEmpty
+	}
+	sqls := make([]string, 0, len(req.Sqls))
+	for _, sql := range req.Sqls {
+		sqls = append(sqls, sql.Query)
+	}
+
+	auditResults, err := driver.Audit(ctx, sqls)
+	if err != nil {
+		return &protoV2.AuditResponse{}, err
+	}
+
+	resp := &protoV2.AuditResponse{}
+	for _, results := range auditResults {
+		rets := &protoV2.AuditResults{
+			Results: make([]*protoV2.AuditResult, 0, len(results.Results)),
+		}
+		for _, result := range results.Results {
+			rets.Results = append(rets.Results, ConvertI18nAuditResultFromDriverToProto(result))
+		}
+		resp.AuditResults = append(resp.AuditResults, rets)
+	}
+	return resp, nil
+}
+
+func (d *DriverGrpcServer) GenRollbackSQL(ctx context.Context, req *protoV2.GenRollbackSQLRequest) (*protoV2.GenRollbackSQLResponse, error) {
+	driver, err := d.getDriverBySession(req.Session)
+	if err != nil {
+		return &protoV2.GenRollbackSQLResponse{}, err
+	}
+	if req.Sql == nil {
+		return &protoV2.GenRollbackSQLResponse{}, ErrSQLisEmpty
+	}
+	rollbackSQL, reason, err := driver.GenRollbackSQL(ctx, req.Sql.Query)
+	return &protoV2.GenRollbackSQLResponse{
+		Sql: &protoV2.RollbackSQL{
+			Query:   rollbackSQL,
+			Message: reason,
+		},
+	}, err
+}
+
+func (d *DriverGrpcServer) Ping(ctx context.Context, req *protoV2.PingRequest) (*protoV2.Empty, error) {
+	driver, err := d.getDriverBySession(req.Session)
+	if err != nil {
+		return &protoV2.Empty{}, err
+	}
+	return &protoV2.Empty{}, driver.Ping(ctx)
+}
+
+func (d *DriverGrpcServer) Exec(ctx context.Context, req *protoV2.ExecRequest) (*protoV2.ExecResponse, error) {
+	driver, err := d.getDriverBySession(req.Session)
+	if err != nil {
+		return &protoV2.ExecResponse{}, err
+	}
+	if req.Sql == nil {
+		return &protoV2.ExecResponse{}, ErrSQLisEmpty
+	}
+	result, err := driver.Exec(ctx, req.Sql.Query)
+	if err != nil {
+		return &protoV2.ExecResponse{}, err
+	}
+
+	execResult := &protoV2.ExecResult{}
+	lastInsertId, lastInsertIdErr := result.LastInsertId()
+	execResult.LastInsertId = lastInsertId
+	if lastInsertIdErr != nil {
+		execResult.LastInsertIdError = lastInsertIdErr.Error()
+	}
+	rowsAffected, rowsAffectedErr := result.RowsAffected()
+	execResult.RowsAffected = rowsAffected
+	if rowsAffectedErr != nil {
+		execResult.RowsAffectedError = rowsAffectedErr.Error()
+	}
+	return &protoV2.ExecResponse{Result: execResult}, nil
+}
+
+func (d *DriverGrpcServer) ExecBatch(ctx context.Context, req *protoV2.ExecBatchRequest) (*protoV2.ExecBatchResult, error) {
+	driver, err := d.getDriverBySession(req.Session)
+	if err != nil {
+		return &protoV2.ExecBatchResult{}, err
+	}
+	if len(req.Sqls) == 0 {
+		return &protoV2.ExecBatchResult{}, ErrSQLisEmpty
+	}
+	sqls := make([]string, 0, len(req.Sqls))
+	for _, sql := range req.Sqls {
+		sqls = append(sqls, sql.Query)
+	}
+
+	results, err := driver.ExecBatch(ctx, sqls...)
+	if err != nil {
+		return &protoV2.ExecBatchResult{}, err
+	}
+
+	execBatchResults := make([]*protoV2.ExecResult, 0, len(results))
+	for _, result := range results {
+		execResult := &protoV2.ExecResult{}
+
+		lastInsertId, lastInsertIdErr := result.LastInsertId()
+		execResult.LastInsertId = lastInsertId
+		if lastInsertIdErr != nil {
+			execResult.LastInsertIdError = lastInsertIdErr.Error()
+		}
+		rowsAffected, rowsAffectedErr := result.RowsAffected()
+		execResult.RowsAffected = rowsAffected
+		if rowsAffectedErr != nil {
+			execResult.RowsAffectedError = rowsAffectedErr.Error()
+		}
+
+		execBatchResults = append(execBatchResults, execResult)
+	}
+	return &protoV2.ExecBatchResult{Results: execBatchResults}, nil
+}
+
+func (d *DriverGrpcServer) Tx(ctx context.Context, req *protoV2.TxRequest) (*protoV2.TxResponse, error) {
+	driver, err := d.getDriverBySession(req.Session)
+	if err != nil {
+		return &protoV2.TxResponse{}, err
+	}
+	if len(req.Sqls) == 0 {
+		return &protoV2.TxResponse{}, ErrSQLisEmpty
+	}
+	sqls := make([]string, 0, len(req.Sqls))
+	for _, sql := range req.Sqls {
+		sqls = append(sqls, sql.Query)
+	}
+
+	results, err := driver.Tx(ctx, sqls...)
+	return convertTxRespToProtoV2(results), err
+}
+
+func convertTxRespToProtoV2(txResp *TxResponse) *protoV2.TxResponse {
+	if txResp == nil {
+		return nil
+	}
+
+	txResults := make([]*protoV2.ExecResult, 0, len(txResp.ExecResult))
+	for _, result := range txResp.ExecResult {
+		txResult := &protoV2.ExecResult{}
+
+		lastInsertId, lastInsertIdErr := result.LastInsertId()
+		txResult.LastInsertId = lastInsertId
+		if lastInsertIdErr != nil {
+			txResult.LastInsertIdError = lastInsertIdErr.Error()
+		}
+		rowsAffected, rowsAffectedErr := result.RowsAffected()
+		txResult.RowsAffected = rowsAffected
+		if rowsAffectedErr != nil {
+			txResult.RowsAffectedError = rowsAffectedErr.Error()
+		}
+
+		txResults = append(txResults, txResult)
+	}
+
+	protoTxResp := &protoV2.TxResponse{Results: txResults}
+	if txResp.ExecErr != nil {
+		protoTxResp.ExecErr = &protoV2.ExecErr{
+			ErrSqlIndex:   txResp.ExecErr.ErrSqlIndex,
+			SqlExecErrMsg: txResp.ExecErr.SqlExecErrMsg,
+		}
+	}
+
+	return protoTxResp
+}
+
+func (d *DriverGrpcServer) Query(ctx context.Context, req *protoV2.QueryRequest) (*protoV2.QueryResponse, error) {
+	driver, err := d.getDriverBySession(req.Session)
+	if err != nil {
+		return &protoV2.QueryResponse{}, err
+	}
+	if req.Sql == nil {
+		return &protoV2.QueryResponse{}, ErrSQLisEmpty
+	}
+	conf := &QueryConf{
+		TimeOutSecond: req.GetConf().GetTimeoutSecond(),
+	}
+	res, err := driver.Query(ctx, req.Sql.Query, conf)
+	if err != nil {
+		return &protoV2.QueryResponse{}, err
+	}
+	resp := &protoV2.QueryResponse{
+		Column: []*protoV2.Param{},
+		Rows:   []*protoV2.QueryResultRow{},
+	}
+	for _, param := range res.Column {
+		resp.Column = append(resp.Column, &protoV2.Param{
+			Key:      param.Key,
+			Value:    param.Value,
+			Desc:     param.GetDesc(i18nPkg.DefaultLang),
+			I18NDesc: param.I18nDesc.StrMap(),
+			Type:     string(param.Type),
+		})
+	}
+	for _, row := range res.Rows {
+		rows := &protoV2.QueryResultRow{
+			Values: []*protoV2.QueryResultValue{},
+		}
+		for _, value := range row.Values {
+			rows.Values = append(rows.Values, &protoV2.QueryResultValue{
+				Value: value.Value,
+			})
+		}
+		resp.Rows = append(resp.Rows, rows)
+	}
+	return resp, nil
+}
+
+func (d *DriverGrpcServer) Explain(ctx context.Context, req *protoV2.ExplainRequest) (*protoV2.ExplainResponse, error) {
+	driver, err := d.getDriverBySession(req.Session)
+	if err != nil {
+		return &protoV2.ExplainResponse{}, err
+	}
+	if req.Sql == nil {
+		return &protoV2.ExplainResponse{}, ErrSQLisEmpty
+	}
+	conf := &ExplainConf{
+		Sql: req.Sql.Query,
+	}
+	res, err := driver.Explain(ctx, conf)
+	if err != nil && err == ErrSQLIsNotSupported {
+		return &protoV2.ExplainResponse{}, status.Error(GrpcErrSQLIsNotSupported, err.Error())
+	} else if err != nil {
+		return &protoV2.ExplainResponse{}, err
+	}
+
+	resp := &protoV2.ExplainResponse{
+		ClassicResult: &protoV2.ExplainClassicResult{
+			Data: ConvertTabularDataToProto(res.ClassicResult.TabularData),
+		},
+	}
+	return resp, nil
+}
+
+func (d *DriverGrpcServer) GetDatabases(ctx context.Context, req *protoV2.GetDatabasesRequest) (*protoV2.GetDatabasesResponse, error) {
+	driver, err := d.getDriverBySession(req.Session)
+	if err != nil {
+		return &protoV2.GetDatabasesResponse{}, err
+	}
+	databases, err := driver.GetDatabases(ctx)
+	protoDatabases := make([]*protoV2.Database, 0, len(databases))
+	for _, d := range databases {
+		protoDatabases = append(protoDatabases, &protoV2.Database{Name: d})
+	}
+	return &protoV2.GetDatabasesResponse{Databases: protoDatabases}, err
+}
+
+func (d *DriverGrpcServer) GetTableMeta(ctx context.Context, req *protoV2.GetTableMetaRequest) (*protoV2.GetTableMetaResponse, error) {
+	driver, err := d.getDriverBySession(req.Session)
+	if err != nil {
+		return &protoV2.GetTableMetaResponse{}, err
+	}
+	if req.Table == nil && req.Table.Name == "" {
+		return &protoV2.GetTableMetaResponse{}, errors.New("table name is empty")
+	}
+
+	tm, err := driver.GetTableMeta(ctx, &Table{Name: req.Table.Name, Schema: req.Table.Schema})
+	if err != nil {
+		return &protoV2.GetTableMetaResponse{}, err
+	}
+
+	return &protoV2.GetTableMetaResponse{
+		TableMeta: ConvertTableMetaToProto(tm),
+	}, nil
+}
+
+func (d *DriverGrpcServer) ExtractTableFromSQL(ctx context.Context, req *protoV2.ExtractTableFromSQLRequest) (*protoV2.ExtractTableFromSQLResponse, error) {
+	driver, err := d.getDriverBySession(req.Session)
+	if err != nil {
+		return &protoV2.ExtractTableFromSQLResponse{}, err
+	}
+	if req.Sql == nil {
+		return &protoV2.ExtractTableFromSQLResponse{}, ErrSQLisEmpty
+	}
+	tables, err := driver.ExtractTableFromSQL(ctx, req.Sql.Query)
+	if err != nil {
+		return &protoV2.ExtractTableFromSQLResponse{}, err
+	}
+	protoTables := make([]*protoV2.Table, 0, len(tables))
+	for _, t := range tables {
+		protoTables = append(protoTables, &protoV2.Table{
+			Name:   t.Name,
+			Schema: t.Schema,
+		})
+	}
+	return &protoV2.ExtractTableFromSQLResponse{
+		Tables: protoTables,
+	}, nil
+}
+
+func (d *DriverGrpcServer) EstimateSQLAffectRows(ctx context.Context, req *protoV2.EstimateSQLAffectRowsRequest) (*protoV2.EstimateSQLAffectRowsResponse, error) {
+	driver, err := d.getDriverBySession(req.Session)
+	if err != nil {
+		return &protoV2.EstimateSQLAffectRowsResponse{}, err
+	}
+	if req.Sql == nil {
+		return &protoV2.EstimateSQLAffectRowsResponse{}, ErrSQLisEmpty
+	}
+	ar, err := driver.EstimateSQLAffectRows(ctx, req.Sql.Query)
+	if err != nil {
+		return &protoV2.EstimateSQLAffectRowsResponse{}, err
+	}
+	return &protoV2.EstimateSQLAffectRowsResponse{
+		Count:      ar.Count,
+		ErrMessage: ar.ErrMessage,
+	}, nil
+}
+
+func (d *DriverGrpcServer) KillProcess(ctx context.Context, req *protoV2.KillProcessRequest) (*protoV2.KillProcessResponse, error) {
+	driver, err := d.getDriverBySession(req.Session)
+	if err != nil {
+		return &protoV2.KillProcessResponse{}, err
+	}
+	info, err := driver.KillProcess(ctx)
+	if err != nil {
+		return &protoV2.KillProcessResponse{}, err
+	}
+	return &protoV2.KillProcessResponse{
+		ErrMessage: info.ErrMessage,
+	}, nil
+}
+
+func (d *DriverGrpcServer) GetDatabaseObjectDDL(ctx context.Context, req *protoV2.DatabaseObjectInfoRequest) (*protoV2.DatabaseSchemaObjectResponse, error) {
+	driver, err := d.getDriverBySession(req.Session)
+	if err != nil {
+		return &protoV2.DatabaseSchemaObjectResponse{}, err
+	}
+	dbInfoReq := make([]*DatabaseSchemaInfo, len(req.DatabaseSchemaInfo))
+	for i, dbSchema := range req.DatabaseSchemaInfo {
+		dbObjs := make([]*DatabaseObject, len(dbSchema.DatabaseObject))
+		for j, dbObj := range dbSchema.DatabaseObject {
+			dbObjs[j] = &DatabaseObject{
+				ObjectName: dbObj.ObjectName,
+				ObjectType: dbObj.ObjectType,
+			}
+		}
+		dbInfoReq[i] = &DatabaseSchemaInfo{
+			SchemaName:      dbSchema.SchemaName,
+			DatabaseObjects: dbObjs,
+		}
+	}
+	infos, err := driver.GetDatabaseObjectDDL(ctx, dbInfoReq)
+	if err != nil {
+		return &protoV2.DatabaseSchemaObjectResponse{}, err
+	}
+	ret := make([]*protoV2.DatabaseSchemaObject, len(infos))
+	for i, info := range infos {
+		ObjDDL := make([]*protoV2.DatabaseObjectDDL, len(info.DatabaseObjectDDLs))
+		for j, obj := range info.DatabaseObjectDDLs {
+			ObjDDL[j] = &protoV2.DatabaseObjectDDL{
+				DatabaseObject: &protoV2.DatabaseObject{
+					ObjectName: obj.DatabaseObject.ObjectName,
+					ObjectType: obj.DatabaseObject.ObjectType,
+				},
+				ObjectDDL: obj.ObjectDDL,
+			}
+		}
+		ret[i] = &protoV2.DatabaseSchemaObject{
+			SchemaName:        info.SchemaName,
+			SchemaDDL:         info.SchemaDDL,
+			DatabaseObjectDDL: ObjDDL,
+		}
+	}
+	return &protoV2.DatabaseSchemaObjectResponse{
+		DatabaseSchemaObject: ret,
+	}, nil
+}
+
+func (d *DriverGrpcServer) GetDatabaseDiffModifySQL(ctx context.Context, req *protoV2.DatabaseDiffModifyRequest) (*protoV2.DatabaseDiffModifyRponse, error) {
+	driver, err := d.getDriverBySession(req.Session)
+	if err != nil {
+		return &protoV2.DatabaseDiffModifyRponse{}, err
+	}
+	params, err := ConvertProtoParamToParam(req.CalibratedDSN.AdditionalParams)
+	if err != nil {
+		return nil, fmt.Errorf("DriverGrpcServer Init req rule param err: %w", err)
+	}
+
+	infos, err := driver.GetDatabaseDiffModifySQL(ctx, &DSN{
+		Host:             req.CalibratedDSN.Host,
+		Port:             req.CalibratedDSN.Port,
+		User:             req.CalibratedDSN.User,
+		Password:         req.CalibratedDSN.Password,
+		AdditionalParams: params,
+		DatabaseName:     req.CalibratedDSN.Database,
+	},
+		ConvertProtoDatabaseDiffReqToDriver(req.ObjInfos))
+	if err != nil {
+		return &protoV2.DatabaseDiffModifyRponse{}, err
+	}
+	scheamDiff := make([]*protoV2.SchemaDiffModify, len(infos))
+	for i, info := range infos {
+		scheamDiff[i] = &protoV2.SchemaDiffModify{
+			SchemaName: info.SchemaName,
+			ModifySQLs: info.ModifySQLs,
+		}
+	}
+	return &protoV2.DatabaseDiffModifyRponse{
+		SchemaDiffModify: scheamDiff,
+	}, nil
+}
+
+func (d *DriverGrpcServer) GetSelectivityOfSQLColumns(ctx context.Context, req *protoV2.GetSelectivityOfSQLColumnsRequest) (*protoV2.GetSelectivityOfSQLColumnsResponse, error) {
+	driver, err := d.getDriverBySession(req.Session)
+	if err != nil {
+		return &protoV2.GetSelectivityOfSQLColumnsResponse{}, err
+	}
+	selectivity, err := driver.GetSelectivityOfSQLColumns(ctx, req.Sql)
+	if err != nil {
+		return &protoV2.GetSelectivityOfSQLColumnsResponse{}, err
+	}
+	protoSelectivity := make([]*protoV2.SelectivityOfSQLColumns, 0, len(selectivity))
+	for tableName, colMap := range selectivity {
+		// 直接将 map[string]float32 赋值，无需合并操作
+		merged := make(map[string]float32, len(colMap))
+		for col, val := range colMap {
+			merged[col] = val
+		}
+		protoSelectivity = append(protoSelectivity, &protoV2.SelectivityOfSQLColumns{
+			TableName:            tableName,
+			SelectivityOfColumns: merged,
+		})
+	}
+	return &protoV2.GetSelectivityOfSQLColumnsResponse{Selectivity: protoSelectivity}, nil
+}

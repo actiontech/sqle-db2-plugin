@@ -1,0 +1,494 @@
+syntax = "proto3";
+package protoV2;
+option go_package = "./;protoV2";
+
+service Driver {
+  // Metas returns some base info from plugin server.
+  rpc Metas(Empty) returns (MetasResponse);
+
+  // Init will should be called at first before calling following methods.
+  // It will pass some necessary info to plugin server. In the beginning,
+  // we consider that put this info to the executable binary environment.
+  // We put all communication on gRPC for unification in the end.
+  rpc Init(InitRequest) returns (InitResponse);
+  rpc Close(CloseRequest) returns (Empty);
+  rpc KillProcess(KillProcessRequest) returns (KillProcessResponse);
+
+  // db audit
+  rpc Parse(ParseRequest) returns (ParseResponse);
+  rpc Audit(AuditRequest) returns (AuditResponse);
+  // Deprecated By Backup and RecommendBackupStrategy
+  rpc GenRollbackSQL(GenRollbackSQLRequest) returns (GenRollbackSQLResponse);
+
+  // db executor
+  rpc Ping(PingRequest) returns (Empty);
+  rpc Exec(ExecRequest) returns (ExecResponse);
+  rpc ExecBatch(ExecBatchRequest) returns (ExecBatchResult);
+  rpc Tx(TxRequest) returns (TxResponse);
+  rpc Query(QueryRequest) returns (QueryResponse);
+  rpc Explain(ExplainRequest) returns (ExplainResponse);
+
+  // db backup
+  rpc RecommendBackupStrategy(RecommendBackupStrategyReq) returns(RecommendBackupStrategyRes);
+  rpc Backup(BackupReq) returns(BackupRes);
+
+  // db metadata
+  rpc GetDatabases(GetDatabasesRequest) returns (GetDatabasesResponse);
+  rpc GetTableMeta(GetTableMetaRequest) returns (GetTableMetaResponse);
+  rpc ExtractTableFromSQL(ExtractTableFromSQLRequest) returns (ExtractTableFromSQLResponse);
+  rpc EstimateSQLAffectRows(EstimateSQLAffectRowsRequest) returns (EstimateSQLAffectRowsResponse); // Introduced from SQLE v2.2304.0
+  rpc GetDatabaseObjectDDL(DatabaseObjectInfoRequest) returns (DatabaseSchemaObjectResponse);
+  rpc GetDatabaseDiffModifySQL(DatabaseDiffModifyRequest) returns (DatabaseDiffModifyRponse);
+  rpc GetSelectivityOfSQLColumns(GetSelectivityOfSQLColumnsRequest) returns (GetSelectivityOfSQLColumnsResponse);
+}
+
+message Empty {}
+
+message Session {
+  string id = 1;
+}
+
+message BackupReq {
+  Session session = 1;
+  BackupStrategy backupStrategy = 2;
+  string sql = 3;
+  uint64 backupMaxRows = 4;
+}
+
+message BackupRes {
+  repeated string backupSql = 1;
+  string executeResult = 2;
+}
+
+message RecommendBackupStrategyReq {
+  Session session = 1;
+  string sql = 2;
+}
+
+message RecommendBackupStrategyRes {
+  BackupStrategy backupStrategy = 1;  // 备份策略
+  string backupStrategyTip = 2;       // 推荐备份策略的原因
+  repeated string tablesRefer =3;     // sql引用的表，用于备份
+  repeated string schemasRefer =4;    // sql引用的数据库，用于备份
+}
+
+enum BackupStrategy {
+    None = 0;         // 备份策略为不备份
+    ReverseSql = 1;   // 备份策略为反向SQL
+    OriginalRow = 2;  // 备份策略为备份原始行
+    Manually = 3;     // 备份策略为人工手动备份
+}
+
+enum OptionalModule {
+  GenRollbackSQL = 0;
+  Query = 1;
+  Explain = 2;
+  GetTableMeta = 3;
+  ExtractTableFromSQL = 4;
+  EstimateSQLAffectRows = 5;
+  KillProcess = 6;
+  ExecBatch = 7;
+  I18n = 8; // 插件是否支持国际化
+  GetDatabaseObjectDDL = 9;
+  GetDatabaseDiffModifySQL = 10;
+  Backup = 11;
+}
+
+message Param {
+  string key = 1;
+  string value = 2;
+  string desc = 3;  // 不支持国际化时，sqle从此取值
+  string type = 4;
+  map<string, string> i18nDesc = 5; // 支持国际化时，sqle从此取值，必须包含默认语言
+}
+
+message DSN {
+  string host = 1;
+  string port = 2;
+  string user = 3;
+  string password = 4;
+  string database = 5;
+  repeated Param additionalParams = 6;
+}
+
+message Rule {
+  string name = 1;
+  string desc = 2; // 不支持国际化时，sqle从此取值
+  string level = 3;
+  string category = 4; // 不支持国际化时，sqle从此取值
+  repeated Param params = 5;
+  string annotation = 6; // 不支持国际化时，sqle从此取值
+  Knowledge knowledge = 7; // 不支持国际化时，sqle从此取值
+  map<string, I18nRuleInfo> i18nRuleInfo = 8; // 支持国际化时，sqle从此取值，必须包含默认语言
+  uint32 version = 9; // 规则版本，一个插件程序可以包含多个版本的规则
+}
+
+message I18nRuleInfo {
+  string desc = 1;
+  string category = 2;
+  string annotation = 3;
+  Knowledge knowledge = 4;
+}
+
+message Knowledge {
+  string content = 1;
+}
+
+// Metas
+message MetasResponse {
+  string pluginName = 1;
+  int64 databaseDefaultPort = 2;
+  repeated Param databaseAdditionalParams = 3;
+  repeated Rule rules = 4;
+  repeated OptionalModule enabledOptionalModule = 5;
+  bytes logo = 6;
+}
+
+// Init
+message InitRequest {
+  DSN dsn = 1;
+  repeated Rule rules = 2;
+}
+
+message InitResponse {
+  Session session = 1;
+}
+
+// Close
+message CloseRequest {
+  Session session = 1;
+}
+
+// Kill
+message KillProcessRequest {
+  Session session = 1;
+}
+
+// Parse
+message ParsedSQL {
+  string query = 1;
+}
+
+message ParseRequest {
+  Session session = 1;
+  ParsedSQL sql = 2;
+}
+
+message Node {
+  string text = 1;
+  string type = 2;
+  string fingerprint = 3;
+  uint64 startLine = 4;
+  uint64 batchId = 5;
+}
+
+message ParseResponse {
+  repeated Node nodes = 1;
+}
+
+// Audit
+message AuditSQL {
+  string query = 1;
+}
+
+message AuditRequest {
+  Session session = 1;
+  repeated AuditSQL sqls = 2;
+}
+
+message I18nAuditResultInfo {
+  string message = 1;
+  string error_info = 2;
+}
+
+message AuditResult {
+  string message = 1; // 不支持国际化时，sqle从此取值
+  string level = 2;
+  string rule_name = 3;
+  map<string, I18nAuditResultInfo> i18nAuditResultInfo = 4; // 支持国际化时，sqle从此取值，必须包含默认语言
+	bool execution_failed = 5;
+  string error_info = 6;
+}
+
+message AuditResults {
+  repeated AuditResult results = 1;
+}
+
+message AuditResponse {
+  repeated AuditResults auditResults = 1;
+}
+
+// GenRollbackSQL
+message NeedRollbackSQL {
+  string query = 1;
+}
+
+message GenRollbackSQLRequest {
+  Session session = 1;
+  NeedRollbackSQL sql = 2;
+}
+
+message I18nRollbackSQLInfo {
+  string message = 1;
+}
+
+message RollbackSQL {
+  string query = 1;
+  string message = 2; // 不支持国际化时，sqle从此取值
+  map<string, I18nRollbackSQLInfo> i18nRollbackSQLInfo = 3; // 支持国际化时，sqle从此取值，必须包含默认语言
+}
+
+message GenRollbackSQLResponse {
+  RollbackSQL sql = 1;
+}
+
+// Ping
+message PingRequest {
+  Session session = 1;
+}
+
+// Exec
+message ExecSQL {
+  string query = 1;
+}
+
+message ExecRequest {
+  Session session = 1;
+  ExecSQL sql = 2;
+}
+
+message ExecResult {
+  int64 lastInsertId = 1;
+  string lastInsertIdError = 2;
+  int64 rowsAffected = 3;
+  string rowsAffectedError = 4;
+}
+
+message ExecBatchRequest {
+  Session session = 1;
+  repeated ExecSQL sqls = 2;
+}
+
+message ExecBatchResult {
+  repeated ExecResult results = 1;
+}
+
+message ExecResponse {
+  ExecResult result = 1;
+}
+
+// Tx
+message TxRequest {
+  Session session = 1;
+  repeated ExecSQL sqls = 2;
+}
+
+message TxResponse {
+  repeated ExecResult results = 1;
+  ExecErr execErr = 2;
+}
+
+message ExecErr {
+  uint32 errSqlIndex = 1;
+  string sqlExecErrMsg = 2;
+}
+
+// Query
+message QuerySQL {
+  string query = 1;
+}
+
+message QueryConf {
+  uint32 timeoutSecond = 1;
+}
+
+message QueryRequest {
+  Session session = 1;
+  QuerySQL sql = 2;
+  QueryConf conf = 3;
+}
+
+message QueryResponse {
+  repeated Param column = 1;
+  repeated QueryResultRow rows = 2;
+}
+
+message QueryResultRow {
+  repeated QueryResultValue values = 1;
+}
+
+message QueryResultValue {
+  string value = 1;
+}
+
+// explain
+message ExplainSQL {
+  string query = 1;
+}
+
+message ExplainRequest {
+  Session session = 1;
+  ExplainSQL sql = 2;
+}
+
+message ExplainResponse {
+  ExplainClassicResult classicResult = 1;
+}
+
+message ExplainClassicResult {
+  TabularData data = 1;
+}
+
+// gETDatabases
+message GetDatabasesRequest {
+  Session session = 1;
+}
+
+message Database {
+  string name = 1;
+}
+
+message GetDatabasesResponse {
+  repeated Database databases = 1;
+}
+
+// GetTableMeta
+message Table {
+  string name = 1;
+  string schema = 2;
+}
+
+message GetTableMetaRequest {
+  Session session = 1;
+  Table table = 2;
+}
+
+message GetTableMetaResponse {
+  TableMeta tableMeta = 1;
+}
+
+message TableMeta {
+  ColumnsInfo columnsInfo = 1;
+  IndexesInfo indexesInfo = 2;
+  string createTableSQL = 3;
+  string message = 4;
+}
+
+message ColumnsInfo {
+  TabularData data = 1;
+}
+
+message IndexesInfo {
+  TabularData data = 1;
+}
+
+message TabularDataHead {
+  string name = 1;
+  string desc = 2; // 不支持国际化时，sqle从此取值
+  map<string, string> i18nDesc = 3; // 支持国际化时，sqle从此取值，必须包含默认语言
+}
+
+message TabularDataRows {
+  repeated string items = 1;
+}
+
+message TabularData {
+  repeated TabularDataHead columns = 1;
+  repeated TabularDataRows rows = 2;
+}
+
+// ExtractTableFromSQL
+message ExtractedSQL {
+  string query = 1;
+}
+
+message ExtractTableFromSQLRequest {
+  Session session = 1;
+  ExtractedSQL sql = 2;
+}
+
+message ExtractTableFromSQLResponse {
+  repeated Table tables = 1;
+}
+
+// EstimateSQLAffectRows
+message AffectRowsSQL {
+  string query = 1;
+}
+
+message EstimateSQLAffectRowsRequest {
+  Session session = 1;
+  AffectRowsSQL sql = 2;
+}
+
+message EstimateSQLAffectRowsResponse {
+  int64 count = 1;
+  string errMessage = 2; // 记录执行失败原因
+}
+
+message KillProcessResponse {
+  string errMessage = 1; // 记录执行失败原因
+}
+
+message DatabaseObjectInfoRequest {
+  Session session = 1;
+  repeated DatabaseSchemaInfo databaseSchemaInfo = 2;
+}
+
+message DatabaseSchemaInfo {
+	string schemaName = 1;
+	repeated DatabaseObject databaseObject = 2;
+}
+
+message DatabaseObject {
+  string objectName = 1;
+  string objectType = 2;
+}
+message  DatabaseSchemaObjectResponse {
+  repeated DatabaseSchemaObject databaseSchemaObject = 1;
+}
+message DatabaseSchemaObject {
+	string schemaName = 1;   
+  string schemaDDL = 2;
+	repeated DatabaseObjectDDL databaseObjectDDL = 3;
+}
+
+message DatabaseObjectDDL {
+	DatabaseObject databaseObject = 1;
+	string objectDDL = 2;   
+}
+
+message DatabaseDiffModifyRequest {
+  Session session = 1;
+  DSN calibratedDSN = 2;
+  repeated DatabasDiffSchemaInfo objInfos = 3;
+}
+
+message DatabasDiffSchemaInfo {
+	string baseSchemaName = 1;
+  string comparedSchemaName = 2;
+	repeated DatabaseObject databaseObject = 3;
+}
+
+message DatabaseDiffModifyRponse {
+  repeated SchemaDiffModify schemaDiffModify = 1;
+}
+
+message SchemaDiffModify {
+  string schemaName = 1;  
+	repeated string modifySQLs = 2;
+}
+
+message GetSelectivityOfSQLColumnsRequest {
+  Session session = 1;
+  string sql = 2;
+}
+
+message SelectivityOfSQLColumns {
+  string tableName = 1;
+  map<string, float> selectivityOfColumns = 2;
+}
+
+message GetSelectivityOfSQLColumnsResponse {
+  repeated SelectivityOfSQLColumns selectivity = 1;
+}

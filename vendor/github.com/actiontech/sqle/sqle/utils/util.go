@@ -1,14 +1,35 @@
 package utils
 
 import (
+	"bytes"
 	"crypto/md5"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/pem"
+	"errors"
+	"fmt"
+	"io"
 	"math"
+	"net/url"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 	"unsafe"
+
+	"golang.org/x/crypto/ssh"
+
+	"github.com/actiontech/sqle/sqle/log"
+	"github.com/bwmarrin/snowflake"
+	"golang.org/x/text/encoding/simplifiedchinese"
+	"golang.org/x/text/transform"
 )
 
 // base64 encoding string to decode string
@@ -71,6 +92,61 @@ func RemoveDuplicate(c []string) []string {
 	return result
 }
 
+func MergeAndDeduplicateSort(arr1, arr2 []string) []string {
+	// 合并两个数组
+	merged := append(arr1, arr2...)
+
+	// 如果合并后的数组是空的，直接返回空切片
+	if len(merged) == 0 {
+		return []string{}
+	}
+
+	// 使用map去重
+	seen := make(map[string]struct{})
+	// 预分配足够的空间，避免多次内存分配
+	result := make([]string, 0, len(merged))
+
+	for _, str := range merged {
+		if _, exists := seen[str]; !exists {
+			seen[str] = struct{}{}
+			result = append(result, str)
+		}
+	}
+
+	// 排序
+	sort.Strings(result)
+
+	return result
+}
+
+func RemoveDuplicatePtrUint64(c []*uint64) []*uint64 {
+	var tmpMap = map[uint64]struct{}{}
+	var result = []*uint64{}
+	for _, v := range c {
+		beforeLen := len(tmpMap)
+		tmpMap[*v] = struct{}{}
+		AfterLen := len(tmpMap)
+		if beforeLen != AfterLen {
+			result = append(result, v)
+		}
+	}
+	return result
+}
+
+func RemoveDuplicateUint(c []uint) []uint {
+	var tmpMap = map[uint]struct{}{}
+	var result = []uint{}
+	for _, v := range c {
+		beforeLen := len(tmpMap)
+		tmpMap[v] = struct{}{}
+		AfterLen := len(tmpMap)
+		if beforeLen != AfterLen {
+			result = append(result, v)
+		}
+	}
+	return result
+}
+
 // Round rounds the argument f to dec decimal places.
 func Round(f float64, dec int) float64 {
 	shift := math.Pow10(dec)
@@ -104,4 +180,428 @@ func JoinUintSliceToString(s []uint, sep string) string {
 	}
 
 	return strings.Join(strSlice, sep)
+}
+
+// If there are no quotation marks (', ", `) at the beginning and end of the string, the string will be wrapped with "`"
+// Need to be wary of the presence of "`" in the string
+// do nothing if s is an empty string
+func SupplementalQuotationMarks(s string) string {
+	if s == "" {
+		return ""
+	}
+	end := len(s) - 1
+	if s[0] != s[end] {
+		return fmt.Sprintf("`%s`", s)
+	}
+	if string(s[0]) != "'" && s[0] != '"' && s[0] != '`' {
+		return fmt.Sprintf("`%s`", s)
+	}
+	return s
+}
+
+func NvlString(param *string) string {
+	if param != nil {
+		return *param
+	}
+	return ""
+}
+
+// IsUpperAndLowerLetterMixed
+// return true if the string contains both uppercase and lowercase letters
+func IsUpperAndLowerLetterMixed(s string) bool {
+	if len(s) == 1 {
+		return false
+	}
+
+	var isUpper bool
+	var once sync.Once
+	for _, v := range s {
+		if !unicode.IsLetter(v) {
+			continue
+		}
+		once.Do(func() {
+			isUpper = unicode.IsUpper(v)
+		})
+		if unicode.IsUpper(v) != isUpper {
+			return true
+		}
+	}
+
+	return false
+}
+
+func StringsContains(array []string, ele string) bool {
+	for _, a := range array {
+		if ele == a {
+			return true
+		}
+	}
+	return false
+}
+
+var defaultNodeNo int64 = 1
+var node *snowflake.Node
+
+// InitSnowflake initiate Snowflake node singleton.
+func InitSnowflake(nodeNo int64) error {
+	// Create snowflake node
+	n, err := snowflake.NewNode(nodeNo)
+	if err != nil {
+		return err
+	}
+	// Set node
+	node = n
+	return nil
+}
+
+// GenUid genUid为生成随机uid
+func GenUid() (string, error) {
+	if node == nil {
+		if err := InitSnowflake(defaultNodeNo); err != nil {
+			return "", err
+		}
+	}
+	return node.Generate().String(), nil
+}
+
+type LowerCaseMap map[string] /*lower case string*/ struct{}
+
+func (l LowerCaseMap) Add(key string) {
+	if key == "" {
+		return
+	}
+	l[strings.ToLower(key)] = struct{}{}
+}
+
+func (l LowerCaseMap) Exist(key string) bool {
+	if key == "" {
+		return false
+	}
+	_, ok := l[strings.ToLower(key)]
+	return ok
+}
+
+func (l LowerCaseMap) Delete(key string) {
+	if key == "" {
+		return
+	}
+	delete(l, strings.ToLower(key))
+}
+
+func IsClosed(ch <-chan struct{}) bool {
+	if ch == nil {
+		return true
+	}
+	select {
+	case _, ok := <-ch:
+		if !ok {
+			return true
+		}
+	default:
+	}
+
+	return false
+}
+
+func TryClose(ch chan struct{}) {
+	if !IsClosed(ch) {
+		close(ch)
+	}
+}
+
+// 对比两个float64中更大的并返回
+func MaxFloat64(a, b float64) float64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// 计算float64变量的增量平均值
+func IncrementalAverageFloat64(oldAverage, newValue float64, oldCount, newCount int) float64 {
+	return (oldAverage*float64(oldCount) + newValue) / (float64(oldCount) + float64(newCount))
+}
+
+// 判断字符串是否是Git Http URL
+func IsGitHttpURL(s string) bool {
+	u, err := url.Parse(s)
+	if err != nil {
+		return false
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return false
+	}
+	if !strings.HasSuffix(u.Path, ".git") {
+		return false
+	}
+	return true
+}
+
+func IsPrefixSubStrArray(arr []string, prefix []string) bool {
+	if len(prefix) > len(arr) {
+		return false
+	}
+
+	for i := 0; i < len(prefix); i++ {
+		if arr[i] != prefix[i] {
+			return false
+		}
+	}
+
+	return true
+}
+
+// 全模糊匹配字符串，对大小写不敏感，匹配多行，且防止正则注入
+func FullFuzzySearchRegexp(str string) *regexp.Regexp {
+	/*
+		1. (?is)是一个正则表达式修饰符,其中：
+			i表示忽略大小写(case-insensitive)
+			s表示开启单行模式，开启后.可以匹配换行符，让整个字符串作为一行
+		2. ^.*匹配字符串的开头,其中：
+			^表示起始位置,
+			.表示匹配任何字符(除了换行符)
+			*表示匹配前面的模式零次或多次
+		3. .*$匹配字符串的结尾,其中：
+			$表示结束位置
+	*/
+	return regexp.MustCompile(`(?is)^.*` + regexp.QuoteMeta(str) + `.*$`)
+}
+
+var ErrUnknownEncoding = errors.New("unknown encoding")
+
+var encodings = []transform.Transformer{
+	simplifiedchinese.GBK.NewDecoder(),
+}
+
+func ConvertToUtf8(in []byte) ([]byte, error) {
+	if utf8.Valid(in) {
+		return in, nil
+	}
+
+	for _, enc := range encodings {
+		reader := transform.NewReader(bytes.NewReader(in), enc)
+		out, err := io.ReadAll(reader)
+		if err == nil {
+			return out, nil
+		}
+		log.NewEntry().Errorf("ConvertToUtf8 failed: %v", err)
+	}
+
+	return nil, ErrUnknownEncoding
+}
+
+// 生成随机字符串，生成长度是halfLength的两倍
+func GenerateRandomString(halfLength int) string {
+	bytes := make([]byte, halfLength)
+	//nolint:errcheck
+	rand.Read(bytes)
+	return fmt.Sprintf("%x", bytes)
+}
+
+// TruncateStringByRunes 按字符数截取字符串
+func TruncateStringByRunes(s string, maxRunes uint) string {
+	// 字节数不大于 maxRunes ，那字符数肯定不大于 maxRunes
+	if uint(len(s)) <= maxRunes {
+		return s
+	}
+
+	// UTF-8一个字符的字节数是不确定的，如：s="a一b二c"，汉字为多字节字符，len(s)=9
+	//    s的hexdump结果：
+	//    00000000  61 e4 b8 80 62 e4 ba 8c 63                       |a...b...c|
+	//
+	//    当想截取头两个字符：“a一”，即 maxRunes 为2时，
+	//    直接返回s[:maxRunes]的话得到是：“61 e4”这两个字节组成的字符串，并非“a一”，“a一”是“61 e4 b8 80”这四个字节，此时应取s[:4]
+	//
+	//    为得到s[:4]中4这个索引，可以“range s”：逐个rune遍历s，i为每个rune起始的字节索引
+	//    i依次为　0　　1　　4　　5　　8
+	//          　^ａ　^一　^ｂ　^二　^ｃ
+	//    遍历 maxRunes (2)次后，i为下一个字符(b)的起始索引，即4，此时s[:i]就是要截取的头两个字符“a一”
+	var runesCount uint
+	for i := range s {
+		if runesCount == maxRunes {
+			// 达到截取的字符数了，将字符截取至此时rune的字节索引
+			return s[:i]
+		}
+		// 未达到要截取的字符数，继续获取下一个rune
+		runesCount++
+	}
+	// 字符串字符数不足 maxRunes
+	return s
+}
+
+const excelCellMaxRunes = 32766
+
+// TruncateAndMarkForExcelCell 对超长字符串进行截取，以符合Excel类工具对单元格字符数上限的限制
+func TruncateAndMarkForExcelCell(s string) string {
+	truncated := TruncateStringByRunes(s, excelCellMaxRunes-4)
+	if truncated != s {
+		// 截取了的话，做标记
+		return truncated + " ..."
+	}
+	return s
+}
+
+func IntersectionStringSlice(slice1, slice2 []string) []string {
+	// 用 map 来存储第一个切片的元素
+	elemMap := make(map[string]bool)
+	for _, v := range slice1 {
+		elemMap[v] = true
+	}
+
+	// 遍历第二个切片，找到交集
+	var intersection []string
+	for _, v := range slice2 {
+		if elemMap[v] {
+			intersection = append(intersection, v)
+			// 删除元素以防重复添加
+			delete(elemMap, v)
+		}
+	}
+	return intersection
+}
+func GeneratePublicKeyFromPrivateKey(privateKey *rsa.PrivateKey) (string, error) {
+	publicKey, err := ssh.NewPublicKey(&privateKey.PublicKey)
+	if err != nil {
+		return "", err
+	}
+	return string(ssh.MarshalAuthorizedKey(publicKey)), nil
+}
+
+func GenerateSSHKeyPair() (privateKeyStr, publicKeyStr string, err error) {
+	// 1. 生成 4096-bit RSA 私钥
+	privateKey, err := rsa.GenerateKey(rand.Reader, 4096)
+	if err != nil {
+		return "", "", err
+	}
+
+	// 2. 编码私钥为 PEM 格式，与ssh-keygen -N "" 生成的格式保持一致（无密码保护）
+	privateKeyBytes := x509.MarshalPKCS1PrivateKey(privateKey)
+	privatePEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: privateKeyBytes,
+	})
+
+	// 3. 生成 SSH 公钥，格式：ssh-rsa AAAA...
+	publicKeyStr, err = GeneratePublicKeyFromPrivateKey(privateKey)
+	if err != nil {
+		return "", "", err
+	}
+
+	return string(privatePEM), publicKeyStr, nil
+}
+
+// CompareNatural 实现自然排序比较，数字按数值大小比较，非数字按字典序比较
+// 例如："file2.sql" 会排在 "file11.sql" 前面
+// 返回值：如果 a < b 返回 true，否则返回 false
+func CompareNatural(a, b string) bool {
+	aRunes := []rune(a)
+	bRunes := []rune(b)
+	
+	aLen := len(aRunes)
+	bLen := len(bRunes)
+	
+	i, j := 0, 0
+	
+	for i < aLen && j < bLen {
+		// 跳过前导空格
+		for i < aLen && unicode.IsSpace(aRunes[i]) {
+			i++
+		}
+		for j < bLen && unicode.IsSpace(bRunes[j]) {
+			j++
+		}
+		
+		if i >= aLen || j >= bLen {
+			break
+		}
+		
+		// 检查当前位置是否为数字
+		aIsDigit := unicode.IsDigit(aRunes[i])
+		bIsDigit := unicode.IsDigit(bRunes[j])
+		
+		if aIsDigit && bIsDigit {
+			// 两者都是数字，提取完整的数字进行比较
+			aNumStart := i
+			bNumStart := j
+			
+			// 提取 a 的数字部分
+			for i < aLen && unicode.IsDigit(aRunes[i]) {
+				i++
+			}
+			// 提取 b 的数字部分
+			for j < bLen && unicode.IsDigit(bRunes[j]) {
+				j++
+			}
+			
+			// 将数字字符串转换为整数进行比较
+			aNumStr := string(aRunes[aNumStart:i])
+			bNumStr := string(bRunes[bNumStart:j])
+			
+			aNum, err1 := strconv.Atoi(aNumStr)
+			bNum, err2 := strconv.Atoi(bNumStr)
+			
+			// 如果转换失败，按字符串比较
+			if err1 != nil || err2 != nil {
+				if aNumStr < bNumStr {
+					return true
+				}
+				if aNumStr > bNumStr {
+					return false
+				}
+				continue
+			}
+			
+			// 按数值比较
+			if aNum < bNum {
+				return true
+			}
+			if aNum > bNum {
+				return false
+			}
+			// 数值相等，但字符串可能不同（如 "02" vs "2"），按字符串比较以保持稳定性
+			if aNumStr < bNumStr {
+				return true
+			}
+			if aNumStr > bNumStr {
+				return false
+			}
+			// 数值和字符串都相等，继续比较下一部分
+			continue
+		}
+		
+		// 至少有一个不是数字，按字符比较
+		if aRunes[i] < bRunes[j] {
+			return true
+		}
+		if aRunes[i] > bRunes[j] {
+			return false
+		}
+		
+		i++
+		j++
+	}
+	
+	// 一个字符串已经比较完，较短的排在前面
+	return aLen < bLen
+}
+
+func FindIntersection(slice1, slice2 []string) []string {
+	map1 := make(map[string]bool)
+	map2 := make(map[string]bool)
+
+	// 填充第一个 map
+	for _, item := range slice1 {
+		map1[item] = true
+	}
+
+	// 填充第二个 map 并查找交集
+	var intersection []string
+	for _, item := range slice2 {
+		if map1[item] && !map2[item] {
+			intersection = append(intersection, item)
+		}
+		map2[item] = true
+	}
+
+	return intersection
 }

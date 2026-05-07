@@ -1,20 +1,60 @@
-# github.com/actiontech/sqle v1.2203.0-pre3.0.20220323045307-6c7bcf498bd4
+# github.com/360EntSecGroup-Skylar/excelize v1.4.1
+## explicit
+github.com/360EntSecGroup-Skylar/excelize
+# github.com/BurntSushi/toml v1.3.2
 ## explicit; go 1.16
+github.com/BurntSushi/toml
+github.com/BurntSushi/toml/internal
+# github.com/DATA-DOG/go-sqlmock v1.5.0
+## explicit
+github.com/DATA-DOG/go-sqlmock
+# github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d
+## explicit
+github.com/StackExchange/wmi
+# github.com/actiontech/dms v0.0.0-20251027081421-309bc24335ca
+## explicit; go 1.19
+github.com/actiontech/dms/pkg/dms-common/conf
+github.com/actiontech/dms/pkg/dms-common/i18nPkg
+github.com/actiontech/dms/pkg/dms-common/pkg/aes
+# github.com/actiontech/sqle v1.2210.1-0.20260507092346-4ce0c2946163 => ../sqle-ee
+## explicit; go 1.19
+github.com/actiontech/sqle/sqle/config
 github.com/actiontech/sqle/sqle/driver
-github.com/actiontech/sqle/sqle/driver/proto
+github.com/actiontech/sqle/sqle/driver/common
+github.com/actiontech/sqle/sqle/driver/mysql/executor
+github.com/actiontech/sqle/sqle/driver/mysql/splitter
+github.com/actiontech/sqle/sqle/driver/mysql/util
+github.com/actiontech/sqle/sqle/driver/v1
+github.com/actiontech/sqle/sqle/driver/v1/proto
+github.com/actiontech/sqle/sqle/driver/v2
+github.com/actiontech/sqle/sqle/driver/v2/proto
+github.com/actiontech/sqle/sqle/errors
 github.com/actiontech/sqle/sqle/log
 github.com/actiontech/sqle/sqle/pkg/driver
 github.com/actiontech/sqle/sqle/pkg/params
 github.com/actiontech/sqle/sqle/utils
+# github.com/bwmarrin/snowflake v0.3.0
+## explicit
+github.com/bwmarrin/snowflake
+# github.com/cznic/mathutil v0.0.0-20181122101859-297441e03548
+## explicit
+github.com/cznic/mathutil
 # github.com/denisenkom/go-mssqldb v0.9.0
 ## explicit; go 1.11
 github.com/denisenkom/go-mssqldb
 github.com/denisenkom/go-mssqldb/internal/cp
 github.com/denisenkom/go-mssqldb/internal/decimal
 github.com/denisenkom/go-mssqldb/internal/querytext
-# github.com/fatih/color v1.9.0
+# github.com/fatih/color v1.13.0
 ## explicit; go 1.13
 github.com/fatih/color
+# github.com/go-ole/go-ole v1.2.4
+## explicit; go 1.12
+github.com/go-ole/go-ole
+github.com/go-ole/go-ole/oleutil
+# github.com/go-sql-driver/mysql v1.7.0
+## explicit; go 1.13
+github.com/go-sql-driver/mysql
 # github.com/golang-jwt/jwt v3.2.2+incompatible
 ## explicit
 github.com/golang-jwt/jwt
@@ -24,7 +64,7 @@ github.com/golang-sql/civil
 # github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
 ## explicit
 github.com/golang/glog
-# github.com/golang/protobuf v1.5.2
+# github.com/golang/protobuf v1.5.3
 ## explicit; go 1.9
 github.com/golang/protobuf/proto
 github.com/golang/protobuf/protoc-gen-go/descriptor
@@ -40,6 +80,9 @@ github.com/hashicorp/go-hclog
 ## explicit; go 1.13
 github.com/hashicorp/go-plugin
 github.com/hashicorp/go-plugin/internal/plugin
+# github.com/hashicorp/go-version v1.7.0
+## explicit
+github.com/hashicorp/go-version
 # github.com/hashicorp/yamux v0.0.0-20180604194846-3520598351bb
 ## explicit
 github.com/hashicorp/yamux
@@ -75,30 +118,86 @@ github.com/jackc/pgtype
 github.com/jackc/pgx/v4
 github.com/jackc/pgx/v4/internal/sanitize
 github.com/jackc/pgx/v4/stdlib
-# github.com/konsorten/go-windows-terminal-sequences v1.0.3
-## explicit
-github.com/konsorten/go-windows-terminal-sequences
-# github.com/mattn/go-colorable v0.1.8
-## explicit; go 1.13
-github.com/mattn/go-colorable
-# github.com/mattn/go-isatty v0.0.14
+# github.com/labstack/echo/v4 v4.10.2 => github.com/labstack/echo/v4 v4.6.1
+## explicit; go 1.15
+github.com/labstack/echo/v4
+# github.com/labstack/gommon v0.4.0
 ## explicit; go 1.12
+github.com/labstack/gommon/color
+github.com/labstack/gommon/log
+# github.com/mattn/go-colorable v0.1.13
+## explicit; go 1.15
+github.com/mattn/go-colorable
+# github.com/mattn/go-isatty v0.0.17
+## explicit; go 1.15
 github.com/mattn/go-isatty
 # github.com/mitchellh/go-testing-interface v1.14.0
 ## explicit; go 1.14
 github.com/mitchellh/go-testing-interface
+# github.com/mohae/deepcopy v0.0.0-20170929034955-c48cc78d4826
+## explicit
+github.com/mohae/deepcopy
+# github.com/nicksnyder/go-i18n/v2 v2.4.0
+## explicit; go 1.18
+github.com/nicksnyder/go-i18n/v2/i18n
+github.com/nicksnyder/go-i18n/v2/i18n/template
+github.com/nicksnyder/go-i18n/v2/internal
+github.com/nicksnyder/go-i18n/v2/internal/plural
 # github.com/oklog/run v1.0.0
 ## explicit
 github.com/oklog/run
-# github.com/percona/go-mysql v0.0.0-20210427141028-73d29c6da78c
-## explicit
-github.com/percona/go-mysql/query
+# github.com/opentracing/opentracing-go v1.2.0
+## explicit; go 1.14
+github.com/opentracing/opentracing-go
+github.com/opentracing/opentracing-go/log
 # github.com/pingcap/errors v0.11.5-0.20201126102027-b0a155152ca3
 ## explicit; go 1.14
 github.com/pingcap/errors
+# github.com/pingcap/log v0.0.0-20210317133921-96f4fcab92a4 => github.com/pingcap/log v0.0.0-20191012051959-b742a5d432e9
+## explicit; go 1.13
+github.com/pingcap/log
+# github.com/pingcap/parser v3.0.12+incompatible => github.com/sjjian/parser v0.0.0-20240704052347-b6199b7bccae
+## explicit; go 1.13
+github.com/pingcap/parser
+github.com/pingcap/parser/ast
+github.com/pingcap/parser/auth
+github.com/pingcap/parser/charset
+github.com/pingcap/parser/format
+github.com/pingcap/parser/model
+github.com/pingcap/parser/mysql
+github.com/pingcap/parser/opcode
+github.com/pingcap/parser/terror
+github.com/pingcap/parser/types
+# github.com/pingcap/tidb v1.1.0-beta.0.20200630082100-328b6d0a955c
+## explicit; go 1.13
+github.com/pingcap/tidb/errno
+github.com/pingcap/tidb/sessionctx/stmtctx
+github.com/pingcap/tidb/types
+github.com/pingcap/tidb/types/json
+github.com/pingcap/tidb/types/parser_driver
+github.com/pingcap/tidb/util/collate
+github.com/pingcap/tidb/util/disk
+github.com/pingcap/tidb/util/execdetails
+github.com/pingcap/tidb/util/hack
+github.com/pingcap/tidb/util/logutil
+github.com/pingcap/tidb/util/math
+github.com/pingcap/tidb/util/memory
+github.com/pingcap/tidb/util/parser
+github.com/pingcap/tidb/util/stringutil
+# github.com/pingcap/tipb v0.0.0-20200522051215-f31a15d98fce
+## explicit
+github.com/pingcap/tipb/go-tipb
+github.com/pingcap/tipb/sharedbytes
 # github.com/pkg/errors v0.9.1
 ## explicit
 github.com/pkg/errors
+# github.com/remyoudompheng/bigfft v0.0.0-20190728182440-6a916e37a237
+## explicit; go 1.12
+github.com/remyoudompheng/bigfft
+# github.com/shirou/gopsutil v3.21.10+incompatible
+## explicit
+github.com/shirou/gopsutil/internal/common
+github.com/shirou/gopsutil/mem
 # github.com/sijms/go-ora/v2 v2.2.15
 ## explicit; go 1.16
 github.com/sijms/go-ora/v2
@@ -107,36 +206,75 @@ github.com/sijms/go-ora/v2/converters
 github.com/sijms/go-ora/v2/network
 github.com/sijms/go-ora/v2/network/security
 github.com/sijms/go-ora/v2/trace
-# github.com/sirupsen/logrus v1.6.0
+# github.com/sirupsen/logrus v1.9.0
 ## explicit; go 1.13
 github.com/sirupsen/logrus
+# github.com/valyala/bytebufferpool v1.0.0
+## explicit
+github.com/valyala/bytebufferpool
+# github.com/valyala/fasttemplate v1.2.2
+## explicit; go 1.12
+github.com/valyala/fasttemplate
 # go.uber.org/atomic v1.7.0
 ## explicit; go 1.13
 go.uber.org/atomic
-# golang.org/x/crypto v0.0.0-20210817164053-32db794688a5
+# go.uber.org/multierr v1.6.0
+## explicit; go 1.12
+go.uber.org/multierr
+# go.uber.org/zap v1.17.0
+## explicit; go 1.13
+go.uber.org/zap
+go.uber.org/zap/buffer
+go.uber.org/zap/internal/bufferpool
+go.uber.org/zap/internal/color
+go.uber.org/zap/internal/exit
+go.uber.org/zap/zapcore
+# golang.org/x/crypto v0.14.0
 ## explicit; go 1.17
+golang.org/x/crypto/acme
+golang.org/x/crypto/acme/autocert
+golang.org/x/crypto/blowfish
+golang.org/x/crypto/chacha20
+golang.org/x/crypto/curve25519
+golang.org/x/crypto/curve25519/internal/field
+golang.org/x/crypto/internal/alias
+golang.org/x/crypto/internal/poly1305
 golang.org/x/crypto/md4
 golang.org/x/crypto/pbkdf2
-# golang.org/x/net v0.0.0-20210913180222-943fd674d43e
+golang.org/x/crypto/ssh
+golang.org/x/crypto/ssh/internal/bcrypt_pbkdf
+# golang.org/x/net v0.17.0
 ## explicit; go 1.17
 golang.org/x/net/context
 golang.org/x/net/http/httpguts
 golang.org/x/net/http2
+golang.org/x/net/http2/h2c
 golang.org/x/net/http2/hpack
 golang.org/x/net/idna
 golang.org/x/net/internal/timeseries
 golang.org/x/net/trace
-# golang.org/x/sys v0.0.0-20210910150752-751e447fb3d0
-## explicit; go 1.17
-golang.org/x/sys/internal/unsafeheader
+# golang.org/x/sys v0.15.0
+## explicit; go 1.18
+golang.org/x/sys/cpu
 golang.org/x/sys/unix
-# golang.org/x/text v0.3.7
-## explicit; go 1.17
+golang.org/x/sys/windows
+# golang.org/x/text v0.14.0
+## explicit; go 1.18
 golang.org/x/text/cases
+golang.org/x/text/encoding
+golang.org/x/text/encoding/charmap
+golang.org/x/text/encoding/internal
+golang.org/x/text/encoding/internal/identifier
+golang.org/x/text/encoding/japanese
+golang.org/x/text/encoding/korean
+golang.org/x/text/encoding/simplifiedchinese
+golang.org/x/text/encoding/traditionalchinese
+golang.org/x/text/encoding/unicode
 golang.org/x/text/internal
 golang.org/x/text/internal/language
 golang.org/x/text/internal/language/compact
 golang.org/x/text/internal/tag
+golang.org/x/text/internal/utf8internal
 golang.org/x/text/language
 golang.org/x/text/runes
 golang.org/x/text/secure/bidirule
@@ -145,22 +283,22 @@ golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
 golang.org/x/text/width
-# google.golang.org/genproto v0.0.0-20210701191553-46259e63a0a9
-## explicit; go 1.11
+# google.golang.org/genproto v0.0.0-20220414192740-2d67ff6cf2b4
+## explicit; go 1.15
 google.golang.org/genproto/googleapis/rpc/status
-# google.golang.org/grpc v1.39.0
+# google.golang.org/grpc v1.50.1 => google.golang.org/grpc v1.29.0
 ## explicit; go 1.11
 google.golang.org/grpc
 google.golang.org/grpc/attributes
 google.golang.org/grpc/backoff
 google.golang.org/grpc/balancer
 google.golang.org/grpc/balancer/base
-google.golang.org/grpc/balancer/grpclb/state
 google.golang.org/grpc/balancer/roundrobin
 google.golang.org/grpc/binarylog/grpc_binarylog_v1
 google.golang.org/grpc/codes
 google.golang.org/grpc/connectivity
 google.golang.org/grpc/credentials
+google.golang.org/grpc/credentials/internal
 google.golang.org/grpc/encoding
 google.golang.org/grpc/encoding/proto
 google.golang.org/grpc/grpclog
@@ -172,24 +310,19 @@ google.golang.org/grpc/internal/balancerload
 google.golang.org/grpc/internal/binarylog
 google.golang.org/grpc/internal/buffer
 google.golang.org/grpc/internal/channelz
-google.golang.org/grpc/internal/credentials
 google.golang.org/grpc/internal/envconfig
 google.golang.org/grpc/internal/grpclog
 google.golang.org/grpc/internal/grpcrand
 google.golang.org/grpc/internal/grpcsync
 google.golang.org/grpc/internal/grpcutil
-google.golang.org/grpc/internal/metadata
-google.golang.org/grpc/internal/resolver
 google.golang.org/grpc/internal/resolver/dns
 google.golang.org/grpc/internal/resolver/passthrough
-google.golang.org/grpc/internal/resolver/unix
-google.golang.org/grpc/internal/serviceconfig
 google.golang.org/grpc/internal/status
 google.golang.org/grpc/internal/syscall
 google.golang.org/grpc/internal/transport
-google.golang.org/grpc/internal/transport/networktype
 google.golang.org/grpc/keepalive
 google.golang.org/grpc/metadata
+google.golang.org/grpc/naming
 google.golang.org/grpc/peer
 google.golang.org/grpc/reflection
 google.golang.org/grpc/reflection/grpc_reflection_v1alpha
@@ -198,8 +331,8 @@ google.golang.org/grpc/serviceconfig
 google.golang.org/grpc/stats
 google.golang.org/grpc/status
 google.golang.org/grpc/tap
-# google.golang.org/protobuf v1.27.1
-## explicit; go 1.9
+# google.golang.org/protobuf v1.28.0
+## explicit; go 1.11
 google.golang.org/protobuf/encoding/prototext
 google.golang.org/protobuf/encoding/protowire
 google.golang.org/protobuf/internal/descfmt
@@ -234,6 +367,13 @@ google.golang.org/protobuf/types/known/timestamppb
 # gopkg.in/natefinch/lumberjack.v2 v2.0.0
 ## explicit
 gopkg.in/natefinch/lumberjack.v2
+# gopkg.in/yaml.v2 v2.4.0
+## explicit; go 1.15
+gopkg.in/yaml.v2
+# gorm.io/gorm v1.24.3
+## explicit; go 1.16
+gorm.io/gorm/logger
+gorm.io/gorm/utils
 # vitess.io/vitess v0.12.0
 ## explicit; go 1.17
 vitess.io/vitess/go/bytes2
@@ -248,3 +388,8 @@ vitess.io/vitess/go/vt/sqlparser
 vitess.io/vitess/go/vt/sysvars
 vitess.io/vitess/go/vt/vterrors
 vitess.io/vitess/go/vt/vtgate/evalengine
+# github.com/actiontech/sqle => ../sqle-ee
+# github.com/labstack/echo/v4 => github.com/labstack/echo/v4 v4.6.1
+# github.com/pingcap/log => github.com/pingcap/log v0.0.0-20191012051959-b742a5d432e9
+# github.com/pingcap/parser => github.com/sjjian/parser v0.0.0-20240704052347-b6199b7bccae
+# google.golang.org/grpc => google.golang.org/grpc v1.29.0

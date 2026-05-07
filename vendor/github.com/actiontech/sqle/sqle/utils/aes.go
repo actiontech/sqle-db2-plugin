@@ -4,30 +4,119 @@ import (
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/md5"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"sync"
 )
 
 var SecretKey = []byte("471F77D078C5994BD06B65B8B5B1935B")
 
-func SetSecretKey(key []byte) (err error) {
-	origKey := SecretKey
-	SecretKey = key
-	origData := "test"
-	var secretData string
-	defer func() {
-		if err != nil {
-			SecretKey = origKey
-		}
-	}()
-	if secretData, err = AesEncrypt(origData); err != nil {
-		return
+type encryptor struct {
+	SecretKey []byte
+	mutex     *sync.RWMutex
+}
+
+var std = &encryptor{
+	SecretKey: SecretKey,
+	mutex:     &sync.RWMutex{},
+}
+
+func NewEncryptor(key []byte) *encryptor {
+	return &encryptor{
+		SecretKey: key,
+		mutex:     &sync.RWMutex{},
 	}
-	if _, err = AesDecrypt(secretData); err != nil {
-		return
+}
+
+func SetSecretKey(key []byte) error {
+	err := std.SetAesSecretKey(key)
+	if err != nil {
+		return err
 	}
-	return
+	setJWTSecretKey(key)
+	return nil
+}
+
+func (e *encryptor) SetAesSecretKey(key []byte) error {
+	if err := testEncryptAndDecrypt(key); err != nil {
+		return err
+	}
+	e.mutex.Lock()
+	e.SecretKey = key
+	e.mutex.Unlock()
+	return nil
+}
+
+// 测试加解密是否正常
+func testEncryptAndDecrypt(key []byte) error {
+	e := &encryptor{
+		SecretKey: key,
+		mutex:     &sync.RWMutex{},
+	}
+
+	testData := "test"
+	secretData, err := e.AesEncrypt(testData)
+	if err != nil {
+		return err
+	}
+	if _, err = e.AesDecrypt(secretData); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (e *encryptor) aesEncrypt(origData []byte) ([]byte, error) {
+	e.mutex.RLock()
+	key := e.SecretKey
+	e.mutex.RUnlock()
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	blockSize := block.BlockSize()
+	origData = pKCS7Padding(origData, blockSize)
+	blockMode := cipher.NewCBCEncrypter(block, key[:blockSize])
+	crypted := make([]byte, len(origData))
+	blockMode.CryptBlocks(crypted, origData)
+	return crypted, nil
+}
+
+func (e *encryptor) aesDecrypt(crypted []byte) ([]byte, error) {
+	e.mutex.RLock()
+	key := e.SecretKey
+	e.mutex.RUnlock()
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	blockSize := block.BlockSize()
+	blockMode := cipher.NewCBCDecrypter(block, key[:blockSize])
+	origData := make([]byte, len(crypted))
+	blockMode.CryptBlocks(origData, crypted)
+	origData = pKCS7UnPadding(origData)
+	return origData, nil
+}
+
+func (e *encryptor) AesEncrypt(origData string) (string, error) {
+	crypted, err := e.aesEncrypt([]byte(origData))
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(crypted), nil
+}
+
+func (e *encryptor) AesDecrypt(encrypted string) (string, error) {
+	encryptedByte, err := base64.StdEncoding.DecodeString(encrypted)
+	if err != nil {
+		return "", err
+	}
+	origByte, err := e.aesDecrypt(encryptedByte)
+	return string(origByte), err
 }
 
 func pKCS7Padding(cipherText []byte, blockSize int) []byte {
@@ -46,47 +135,12 @@ func pKCS7UnPadding(origData []byte) []byte {
 	return origData[:(length - unpadding)]
 }
 
-func aesEncrypt(origData, key []byte) ([]byte, error) {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	blockSize := block.BlockSize()
-	origData = pKCS7Padding(origData, blockSize)
-	blockMode := cipher.NewCBCEncrypter(block, key[:blockSize])
-	crypted := make([]byte, len(origData))
-	blockMode.CryptBlocks(crypted, origData)
-	return crypted, nil
-}
-
-func aesDecrypt(crypted, key []byte) ([]byte, error) {
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-	blockSize := block.BlockSize()
-	blockMode := cipher.NewCBCDecrypter(block, key[:blockSize])
-	origData := make([]byte, len(crypted))
-	blockMode.CryptBlocks(origData, crypted)
-	origData = pKCS7UnPadding(origData)
-	return origData, nil
-}
-
 func AesEncrypt(origData string) (string, error) {
-	crypted, err := aesEncrypt([]byte(origData), SecretKey)
-	if err != nil {
-		return "", err
-	}
-	return base64.StdEncoding.EncodeToString(crypted), nil
+	return std.AesEncrypt(origData)
 }
 
 func AesDecrypt(encrypted string) (string, error) {
-	encryptedByte, err := base64.StdEncoding.DecodeString(encrypted)
-	if err != nil {
-		return "", err
-	}
-	origByte, err := aesDecrypt(encryptedByte, SecretKey)
-	return string(origByte), err
+	return std.AesDecrypt(encrypted)
 }
 
 type Password string
@@ -100,4 +154,11 @@ func (p *Password) MarshalJSON() ([]byte, error) {
 		return nil, fmt.Errorf("encrypt error: %v", err)
 	}
 	return json.Marshal(value)
+}
+
+func Md5(src string) string {
+	m := md5.New()
+	m.Write([]byte(src))
+	res := hex.EncodeToString(m.Sum(nil))
+	return res
 }
